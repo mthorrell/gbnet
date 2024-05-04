@@ -57,7 +57,7 @@ class LGBModule(nn.Module):
         for i in range(self.output_dim):
             hesses.append(
                 torch.autograd.grad(grad[:, i].sum(), self.FX, retain_graph=True)[0][
-                    :, i : i + 1
+                    :, i : (i + 1)
                 ]
             )
         hess = torch.cat(hesses, axis=1)
