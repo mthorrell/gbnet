@@ -47,7 +47,7 @@ class LGBModule(nn.Module):
             return self.FX
         return preds
 
-    def gb_step(self, input_array, loss):
+    def gb_step(self, input_array):
         grad = self.FX.grad * self.batch_size
 
         # parameters are independent row by row, so we can
