@@ -28,6 +28,7 @@ class LGBModule(nn.Module):
         )
 
     def forward(self, input_array, return_tensor=True):
+        # TODO figure out how actual batch training works here
         if self.bst is not None:
             if self.training:
                 preds = self.bst._Booster__inner_predict(0).copy()
