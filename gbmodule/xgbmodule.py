@@ -83,12 +83,9 @@ class XGBModule(nn.Module):
 
         self.bst.boost(
             self.dtrain,
-            # self.n_completed_boost_rounds+1,
             g,
             h,
         )
-
-        self.n_completed_boost_rounds = self.n_completed_boost_rounds + 1
 
 
 class XGBObj:
