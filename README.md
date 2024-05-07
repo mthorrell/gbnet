@@ -10,7 +10,7 @@ Gradient Boosting Machines only require gradients and, for modern packages, hess
 
 Clone and pip install.
 
-# Basic training of a GBM with this package
+# Basic training of a GBM
 
 ```python
 import time
