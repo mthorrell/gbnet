@@ -34,7 +34,7 @@ Y = X.dot(B) + np.random.random([n, output_dim])
 iters = 100
 t0 = time.time()
 
-# XGBoost training
+# XGBoost training for comparison
 xbst = xgb.train(
     params={'objective': 'reg:squarederror', 'base_score': 0.0},
     dtrain=xgb.DMatrix(X, label=Y),
@@ -42,7 +42,7 @@ xbst = xgb.train(
 )
 t1 = time.time()
 
-# LightGBM training
+# LightGBM training for comparison
 lbst = lgb.train(
     params={'verbose':-1},
     train_set=lgb.Dataset(X, label=Y.flatten(), init_score=[0 for i in range(n)]),
