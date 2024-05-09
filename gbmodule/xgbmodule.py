@@ -40,22 +40,30 @@ class XGBModule(nn.Module):
         )
 
     def forward(self, input_array, return_tensor=True):
-        # TODO relate this to training mode and, ultimately actual
-        # batch training
-        if self.dtrain is not None:
-            preds = self.bst.predict(self.dtrain)
+        # TODO figure out actual batch training
+        if self.training:
+            if self.dtrain is not None:
+                preds = self.bst.predict(self.dtrain)
+            else:
+                preds = self.bst.predict(xgb.DMatrix(input_array))
         else:
             preds = self.bst.predict(xgb.DMatrix(input_array))
 
-        FX_detach = self.FX.detach()
-        FX_detach.copy_(
-            torch.tensor(
-                preds.reshape([self.batch_size, self.output_dim]), dtype=torch.float
+        if self.training:
+            FX_detach = self.FX.detach()
+            FX_detach.copy_(
+                torch.tensor(
+                    preds.reshape([self.batch_size, self.output_dim]), dtype=torch.float
+                )
             )
-        )
 
         if return_tensor:
-            return self.FX
+            if self.training:
+                return self.FX
+            else:
+                return torch.tensor(
+                    preds.reshape([-1, self.output_dim]), dtype=torch.float
+                )
         return preds
 
     def gb_step(self, input_array):
