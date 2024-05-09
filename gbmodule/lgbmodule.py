@@ -29,23 +29,34 @@ class LGBModule(nn.Module):
 
     def forward(self, input_array, return_tensor=True):
         # TODO figure out how actual batch training works here
-        if self.bst is not None:
-            if self.training:
+        if self.training:
+            if self.bst:
                 preds = self.bst._Booster__inner_predict(0).copy()
             else:
-                preds = self.bst.predict(input_array).copy()
+                preds = np.zeros([self.batch_size, self.output_dim])
         else:
-            preds = np.zeros([self.batch_size, self.output_dim])
+            if self.bst:
+                preds = self.bst.predict(input_array).copy()
+            else:
+                preds = np.zeros(
+                    [input_array.shape[0], self.output_dim], dtype=torch.float
+                )
 
-        FX_detach = self.FX.detach()
-        FX_detach.copy_(
-            torch.tensor(
-                preds.reshape([self.batch_size, self.output_dim]), dtype=torch.float
+        if self.training:
+            FX_detach = self.FX.detach()
+            FX_detach.copy_(
+                torch.tensor(
+                    preds.reshape([self.batch_size, self.output_dim]), dtype=torch.float
+                )
             )
-        )
 
         if return_tensor:
-            return self.FX
+            if self.training:
+                return self.FX
+            else:
+                return torch.tensor(
+                    preds.reshape([-1, self.output_dim]), dtype=torch.float
+                )
         return preds
 
     def gb_step(self, input_array):
