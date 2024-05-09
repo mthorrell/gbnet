@@ -10,9 +10,9 @@ Gradient Boosting Machines only require gradients and, for modern packages, hess
 
 Clone and pip install.
 
-# Basic training of a GBM with this package
+# Basic training of a GBM
 
-```
+```python
 import time
 
 import lightgbm as lgb
@@ -34,7 +34,7 @@ Y = X.dot(B) + np.random.random([n, output_dim])
 iters = 100
 t0 = time.time()
 
-# XGBoost training
+# XGBoost training for comparison
 xbst = xgb.train(
     params={'objective': 'reg:squarederror', 'base_score': 0.0},
     dtrain=xgb.DMatrix(X, label=Y),
@@ -42,7 +42,7 @@ xbst = xgb.train(
 )
 t1 = time.time()
 
-# LightGBM training
+# LightGBM training for comparison
 lbst = lgb.train(
     params={'verbose':-1},
     train_set=lgb.Dataset(X, label=Y.flatten(), init_score=[0 for i in range(n)]),
@@ -88,20 +88,14 @@ print(f'lgbmodule time: {t4 - t3}') # 0.123
 
 # Training XGBoost and LightGBM together
 
-```
+```python
+import time
+
+import numpy as np
 import torch
 
 from gbmodule import lgbmodule, xgbmodule
 
-
-# Generate Dataset
-np.random.seed(100)
-n = 1000
-input_dim = 10
-output_dim = 1
-X = np.random.random([n, input_dim])
-B = np.random.random([input_dim, output_dim])
-Y = X.dot(B) + np.random.random([n, output_dim])
 
 # Create new module that jointly trains multi-output xgboost and lightgbm models
 # the outputs of these gbm models is then combined by a linear layer
@@ -123,6 +117,15 @@ class GBPlus(torch.nn.Module):
         self.xgb.gb_step(input_array)
         self.lgb.gb_step(input_array)
 
+# Generate Dataset
+np.random.seed(100)
+n = 1000
+input_dim = 10
+output_dim = 1
+X = np.random.random([n, input_dim])
+B = np.random.random([input_dim, output_dim])
+Y = X.dot(B) + np.random.random([n, output_dim])
+
 intermediate_dim = 10
 gbp = GBPlus(input_dim, intermediate_dim, output_dim)
 mse = torch.nn.MSELoss()
@@ -143,3 +146,4 @@ for i in range(100):
 t1 = time.time()
 print(t1 - t0)  # 5.821
 ```
+<img width="750" alt="image" src="https://github.com/mthorrell/gbmodule/assets/15166269/949c7000-7fc3-4600-8916-03cdf60eeeb8">
