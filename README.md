@@ -1,4 +1,4 @@
-# gbmodule
+# gboost_module
 
 Gradient Boosting Modules for pytorch
 
@@ -20,7 +20,7 @@ import numpy as np
 import xgboost as xgb
 import torch
 
-from gbmodule import lgbmodule, xgbmodule
+from gboost_module import lgbmodule, xgbmodule
 
 # Generate Dataset
 np.random.seed(100)
@@ -94,7 +94,7 @@ import time
 import numpy as np
 import torch
 
-from gbmodule import lgbmodule, xgbmodule
+from gboost_module import lgbmodule, xgbmodule
 
 
 # Create new module that jointly trains multi-output xgboost and lightgbm models
@@ -138,7 +138,7 @@ for i in range(100):
     preds = gbp(X)
 
     loss = mse(preds, torch.Tensor(Y))
-    loss.backward(create_graph=True)  # create_graph=True required for any gbmodule
+    loss.backward(create_graph=True)  # create_graph=True required for any gboost_module
     losses.append(loss.detach().numpy().copy())
 
     gbp.gb_step(X)  # required to update the gbms
