@@ -8,7 +8,7 @@ Gradient Boosting Machines only require gradients and, for modern packages, hess
 
 # Install
 
-Clone and pip install.
+`pip install gboost_module`
 
 # Basic training of a GBM for comparison to existing packages
 
