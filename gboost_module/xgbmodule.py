@@ -22,6 +22,7 @@ class XGBModule(nn.Module):
         self.params = params
         self.params["objective"] = "reg:squarederror"
         self.params["base_score"] = 0
+        self.n_completed_boost_rounds = 0
 
         init_matrix = np.zeros([batch_size, input_dim])
         self.bst = xgb.train(
@@ -90,11 +91,20 @@ class XGBModule(nn.Module):
 
         g, h = obj(np.zeros([self.batch_size, self.output_dim]), None)
 
-        self.bst.boost(
-            self.dtrain,
-            g,
-            h,
-        )
+        if xgb.__version__ <= "2.0.3":
+            self.bst.boost(
+                self.dtrain,
+                g,
+                h,
+            )
+        else:
+            self.bst.boost(
+                self.dtrain,
+                self.n_completed_boost_rounds + 1,
+                g,
+                h,
+            )
+        self.n_completed_boost_rounds = self.n_completed_boost_rounds + 1
 
 
 class XGBObj:
@@ -103,7 +113,6 @@ class XGBObj:
         self.hess = hess
 
     def __call__(self, preds, dtrain):
-
         if len(preds.shape) == 2:
             M = preds.shape[0]
             N = preds.shape[1]
