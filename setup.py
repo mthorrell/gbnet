@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="gboost_module",
-    version="0.1",
+    version="0.1.1",
     author="Michael Horrell",
     author_email="mthorrell@github.com",
     description="Torch modules using popular boosting libraries",
