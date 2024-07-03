@@ -10,6 +10,9 @@ Gradient Boosting Machines only require gradients and, for modern packages, hess
 
 `pip install gboost_module`
 
+# Troubleshooting
+1. Currently, the biggest difference between training using `gboost_module` vs basic `torch`, is that `gboost_module`, like basic usage of `xgboost` and `lightgbm`, requires the entire dataset to be fed in. Cached predictions allow these packages to train quickly, and caching cannot happen if input batches change with each training/boosting round. Some additional info is provided in https://github.com/mthorrell/gboost_module/issues/12.
+
 # Basic training of a GBM for comparison to existing packages
 
 ```python
