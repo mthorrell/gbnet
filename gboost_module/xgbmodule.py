@@ -41,6 +41,7 @@ class XGBModule(nn.Module):
         )
 
     def forward(self, input_array, return_tensor=True):
+        assert isinstance(input_array, np.ndarray), "Input must be a numpy array"
         # TODO figure out actual batch training
         if self.training:
             if self.dtrain is not None:

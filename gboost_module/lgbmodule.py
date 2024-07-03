@@ -28,6 +28,7 @@ class LGBModule(nn.Module):
         )
 
     def forward(self, input_array, return_tensor=True):
+        assert isinstance(input_array, np.ndarray), "Input must be a numpy array"
         # TODO figure out how actual batch training works here
         if self.training:
             if self.bst:
