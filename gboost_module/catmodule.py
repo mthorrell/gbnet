@@ -18,8 +18,15 @@ class CatModule(nn.Module):
         self.output_dim = output_dim
 
         self.params = params
-        self.params.update({"iterations": 1})
+        self.params.update(
+            {
+                "iterations": 1,
+                "eval_metric": ("MultiRMSE" if self.output_dim > 1 else "RMSE"),
+                "boost_from_average": False,
+            }
+        )
         self.bst = None
+        self.train_dat = None
 
         self.FX = nn.Parameter(
             torch.tensor(
@@ -32,8 +39,8 @@ class CatModule(nn.Module):
         assert isinstance(input_array, np.ndarray), "Input must be a numpy array"
         # TODO figure out how actual batch training works here
         if self.training:
-            if self.bst and self.dtrain:
-                preds = self.bst.predict(self.dtrain)
+            if self.bst and self.train_dat:
+                preds = self.bst.predict(self.train_dat)
             else:
                 preds = np.zeros([self.batch_size, self.output_dim])
         else:
@@ -76,7 +83,7 @@ class CatModule(nn.Module):
             )
         hess = torch.cat(hesses, axis=1)
 
-        obj = CatboostObj(grad, hess)
+        obj = CatboostObj(grad, hess, self.batch_size)
         input_params = self.params.copy()
         input_params.update(
             {
@@ -84,32 +91,42 @@ class CatModule(nn.Module):
             }
         )
 
+        self.grad_index = 0
         if self.bst is not None:
-            new_bst = cb.CatBoostRegressor(**self.params)
+            new_bst = cb.CatBoostRegressor(**input_params)
             new_bst.fit(self.train_dat, init_model=self.bst)
             self.bst = new_bst
         else:
             self.train_dat = cb.Pool(
                 data=input_array,
-                labels=np.random.random([self.batch_size, self.output_dim]),
-                weight=range(
-                    self.batch_size
-                ),  # hack to force custom obj to work correctly
+                label=np.random.random([self.batch_size, self.output_dim]),
             )
-            self.bst = cb.CatBoostRegressor(**self.params)
+            self.bst = cb.CatBoostRegressor(**input_params)
             self.bst.fit(self.train_dat)
 
 
-class CatboostObj(cb.MultiRegressionCustomObjective):
-    def __init__(self, grad, hess):
+class CatboostObj(cb.MultiTargetCustomObjective):
+    def __init__(self, grad, hess, n):
         self.grad = grad.detach().numpy()
         self.hess = hess.detach().numpy()
+        self.call_index = 0
+        self.n = n
 
     def calc_ders_multi(self, approxes, targets, weight):
         # TODO catboost works row by row in the multidim output setting.
         # I'm not sure if we can re-calculate grad and hess per row efficiently,
-        # so, currently, this uses the `weight` input to identify the prediction
-        # row being considered. The todo is to find a better way to do this.
-        grad = -self.grad[weight, :]  # uses the negative gradient
-        hess = -np.diag(self.hess[weight, :])
+        # so, currently, this relies on the objective function being called
+        # sequentially, a very brittle assumption.
+        grad = -self.grad[self.call_index % self.n, :]  # uses the negative gradient
+        hess = -np.diag(self.hess[self.call_index % self.n, :])
+        # print({
+        #     'approxes': approxes,
+        #     'targets': targets,
+        #     'weight': weight,
+        #     'grad': grad,
+        #     'hess': hess,
+        #     'call_index': self.call_index,
+        #     'call_index_mod': self.call_index % self.n,
+        # })
+        self.call_index += 1
         return (grad, hess)
