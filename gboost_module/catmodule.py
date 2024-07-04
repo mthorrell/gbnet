@@ -18,7 +18,7 @@ class CatModule(nn.Module):
         self.output_dim = output_dim
 
         self.params = params
-        self.params.update({'iterations': 1})
+        self.params.update({"iterations": 1})
         self.bst = None
 
         self.FX = nn.Parameter(
@@ -92,7 +92,9 @@ class CatModule(nn.Module):
             self.train_dat = cb.Pool(
                 data=input_array,
                 labels=np.random.random([self.batch_size, self.output_dim]),
-                weight=range(self.batch_size)  # hack to force custom obj to work correctly
+                weight=range(
+                    self.batch_size
+                ),  # hack to force custom obj to work correctly
             )
             self.bst = cb.CatBoostRegressor(**self.params)
             self.bst.fit(self.train_dat)
