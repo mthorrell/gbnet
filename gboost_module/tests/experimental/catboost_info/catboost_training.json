@@ -1,5 +1,0 @@
-{
-"meta":{"test_sets":[],"test_metrics":[],"learn_metrics":[{"best_value":"Min","name":"MultiRMSE"}],"launch_mode":"Train","parameters":"","iteration_count":1,"learn_sets":["learn"],"name":"experiment"},
-"iterations":[
-{"learn":[0.08156445616],"iteration":0,"passed_time":0.0005507249865,"remaining_time":0}
-]}
