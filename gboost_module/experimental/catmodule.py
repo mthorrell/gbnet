@@ -5,6 +5,17 @@ from torch import nn
 
 
 class CatModule(nn.Module):
+    """
+    CatModule mirrors LGBModule and XGBModule but uses catboost as the gbdt
+    implementation.
+
+    Currently this is in the experimental section of the code because, while
+    this module generally gives results as expected, the catboost connection
+    cannot yet work the same as the GBDT connections in LGBModule and
+    XGBModule; thus, using CatModule is a fair amount slower compared to the
+    other modules. If you have ideas here, please file an issue :)
+    """
+
     def __init__(
         self,
         batch_size,
@@ -25,8 +36,10 @@ class CatModule(nn.Module):
                 "boost_from_average": False,
             }
         )
+
         self.bst = None
         self.train_dat = None
+        self.obj = None
 
         self.FX = nn.Parameter(
             torch.tensor(
@@ -83,23 +96,17 @@ class CatModule(nn.Module):
             )
         hess = torch.cat(hesses, axis=1)
 
-        obj = CatboostObj(grad, hess, self.batch_size)
-        input_params = self.params.copy()
-        input_params.update(
-            {
-                "loss_function": obj,
-            }
-        )
-
         self.grad_index = 0
         if self.bst is not None:
-            new_bst = cb.CatBoostRegressor(**input_params)
-            new_bst.fit(self.train_dat, init_model=self.bst)
-            self.bst = new_bst
+            self.obj.reset(grad, hess, self.batch_size)
+            self.bst.fit(self.train_dat, init_model=self.bst)
+
         else:
+            self.obj = CatboostObj(grad, hess, self.batch_size)
+            input_params = self.params.copy()
+            input_params.update({"loss_function": self.obj, "allow_const_label": True})
             self.train_dat = cb.Pool(
-                data=input_array,
-                label=np.random.random([self.batch_size, self.output_dim]),
+                data=input_array, label=np.zeros([self.batch_size, self.output_dim])
             )
             self.bst = cb.CatBoostRegressor(**input_params)
             self.bst.fit(self.train_dat)
@@ -112,6 +119,12 @@ class CatboostObj(cb.MultiTargetCustomObjective):
         self.call_index = 0
         self.n = n
 
+    def reset(self, grad, hess, n):
+        self.grad = grad.detach().numpy()
+        self.hess = hess.detach().numpy()
+        self.call_index = 0
+        self.n = n
+
     def calc_ders_multi(self, approxes, targets, weight):
         # TODO catboost works row by row in the multidim output setting.
         # I'm not sure if we can re-calculate grad and hess per row efficiently,
@@ -119,14 +132,5 @@ class CatboostObj(cb.MultiTargetCustomObjective):
         # sequentially, a very brittle assumption.
         grad = -self.grad[self.call_index % self.n, :]  # uses the negative gradient
         hess = -np.diag(self.hess[self.call_index % self.n, :])
-        # print({
-        #     'approxes': approxes,
-        #     'targets': targets,
-        #     'weight': weight,
-        #     'grad': grad,
-        #     'hess': hess,
-        #     'call_index': self.call_index,
-        #     'call_index_mod': self.call_index % self.n,
-        # })
         self.call_index += 1
         return (grad, hess)
