@@ -2,18 +2,20 @@
 
 Gradient Boosting Modules for pytorch
 
-# Introduction
+## Introduction
 
 Gradient Boosting Machines only require gradients and, for modern packages, hessians to train. Pytorch (and other neural network packages) calculates gradients and hessians. GBMs can therefore be fit as the first layer in neural networks using Pytorch. This package provides access to XGBoost and LightGBM as Pytorch Modules to do exactly this.
 
-# Install
+CatBoost is supported in an experimental capacity since the current gboost_module integration with CatBoost is not as performant as the other GBDT packages.
+
+## Install
 
 `pip install gboost_module`
 
-# Troubleshooting
-1. Currently, the biggest difference between training using `gboost_module` vs basic `torch`, is that `gboost_module`, like basic usage of `xgboost` and `lightgbm`, requires the entire dataset to be fed in. Cached predictions allow these packages to train quickly, and caching cannot happen if input batches change with each training/boosting round. Some additional info is provided in https://github.com/mthorrell/gboost_module/issues/12.
+## Troubleshooting
+1. Currently, the biggest difference between training using `gboost_module` vs basic `torch`, is that `gboost_module`, like basic usage of `xgboost` and `lightgbm`, requires the entire dataset to be fed in. Cached predictions allow these packages to train quickly, and caching cannot happen if input batches change with each training/boosting round. Some additional info is provided in [#12](https://github.com/mthorrell/gboost_module/issues/12).
 
-# Basic training of a GBM for comparison to existing packages
+## Basic training of a GBM for comparison to existing packages
 
 ```python
 import time
@@ -89,7 +91,7 @@ print(f'xgbmodule time: {t3 - t2}') # 0.166
 print(f'lgbmodule time: {t4 - t3}') # 0.123
 ```
 
-# Training XGBoost and LightGBM together
+## Training XGBoost and LightGBM together
 
 ```python
 import time
