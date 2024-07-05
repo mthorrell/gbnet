@@ -4,7 +4,7 @@ Gradient Boosting Modules for pytorch
 
 ## Introduction
 
-Gradient Boosting Machines only require gradients and, for modern packages, hessians to train. Pytorch (and other neural network packages) calculates gradients and hessians. GBMs can therefore be fit as the first layer in neural networks using Pytorch. This package provides access to XGBoost and LightGBM as Pytorch Modules to do exactly this. 
+Gradient Boosting Machines only require gradients and, for modern packages, hessians to train. Pytorch (and other neural network packages) calculates gradients and hessians. GBMs can therefore be fit as the first layer in neural networks using Pytorch. This package provides access to XGBoost and LightGBM as Pytorch Modules to do exactly this.
 
 CatBoost is supported in an experimental capacity since the current gboost_module integration with CatBoost is not as performant as the other GBDT packages.
 
