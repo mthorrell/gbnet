@@ -1,7 +1,6 @@
-from catboost import CatBoostRegressor
 import numpy as np
 import torch
-
+from catboost import CatBoostRegressor
 from gboost_module.experimental import catmodule
 
 
