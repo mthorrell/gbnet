@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from gboost_module import xgbmodule
+from gbnet import xgbmodule
 from scipy.linalg import lstsq
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.utils.validation import check_is_fitted

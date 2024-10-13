@@ -26,6 +26,7 @@ class LGBModule(nn.Module):
                 dtype=torch.float,
             )
         )
+        self.train_dat = None
 
     def forward(self, input_array, return_tensor=True):
         assert isinstance(input_array, np.ndarray), "Input must be a numpy array"

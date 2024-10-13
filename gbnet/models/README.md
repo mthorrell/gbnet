@@ -1,7 +1,7 @@
 # Forecasting starter code
 
 ```python
-from gboost_module.models import forecasting
+from gbnet.models import forecasting
 import pandas as pd
 
 # Assuming df is your DataFrame with 'ds' and 'y' columns

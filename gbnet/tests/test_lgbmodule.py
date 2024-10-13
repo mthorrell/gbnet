@@ -3,8 +3,7 @@ from unittest import mock
 import lightgbm as lgb
 import numpy as np
 import torch
-
-from gboost_module import lgbmodule as lgm
+from gbnet import lgbmodule as lgm
 
 
 def test_basic_loss():
@@ -23,7 +22,7 @@ def test_basic_loss():
     m_Dataset = mock.MagicMock(side_effect=lgb.Dataset)
     m_train = mock.MagicMock(side_effect=lgb.train)
     with (
-        mock.patch("gboost_module.lgbmodule.LightGBObj", m_obj),
+        mock.patch("gbnet.lgbmodule.LightGBObj", m_obj),
         mock.patch("lightgbm.Dataset", m_Dataset),
         mock.patch("lightgbm.train", m_train),
     ):

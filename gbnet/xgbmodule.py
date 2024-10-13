@@ -1,9 +1,7 @@
-from typing import Tuple
-
 import numpy as np
 import torch
-from torch import nn
 import xgboost as xgb
+from torch import nn
 
 
 class XGBModule(nn.Module):
