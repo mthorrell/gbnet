@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from catboost import CatBoostRegressor
-from gboost_module.experimental import catmodule
+from gbnet.experimental import catmodule
 
 
 def test_basic_catboost_example():

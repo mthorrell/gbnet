@@ -4,7 +4,7 @@ import xgboost as xgb
 import numpy as np
 import torch
 
-from gboost_module import xgbmodule as xgm
+from gbnet import xgbmodule as xgm
 
 
 def test_basic_loss():
@@ -20,7 +20,7 @@ def test_basic_loss():
     loss.backward(create_graph=True)
 
     with (
-        mock.patch("gboost_module.xgbmodule.XGBObj", side_effect=xgm.XGBObj) as m_obj,
+        mock.patch("gbnet.xgbmodule.XGBObj", side_effect=xgm.XGBObj) as m_obj,
         mock.patch("xgboost.DMatrix", side_effect=xgb.DMatrix) as m_DMatrix,
         mock.patch.object(gbm.bst, "boost", side_effect=gbm.bst.boost) as m_boost,
     ):

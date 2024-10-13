@@ -5,7 +5,7 @@ import numpy as np
 import xgboost as xgb
 import torch
 
-from gboost_module import lgbmodule, xgbmodule
+from gbnet import lgbmodule, xgbmodule
 
 
 def test_readme_examples():
@@ -122,9 +122,7 @@ def test_combine_example():
         preds = gbp(X)
 
         loss = mse(preds, torch.Tensor(Y))
-        loss.backward(
-            create_graph=True
-        )  # create_graph=True required for any gboost_module
+        loss.backward(create_graph=True)  # create_graph=True required for any gbnet
         losses.append(loss.detach().numpy().copy())
 
         gbp.gb_step(X)  # required to update the gbms

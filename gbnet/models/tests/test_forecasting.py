@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
-from gboost_module.models import forecasting
+from gbnet.models import forecasting
 
 # Import your CustomEstimator class
 # from your_module import CustomEstimator  # Replace 'your_module' with the actual module name
