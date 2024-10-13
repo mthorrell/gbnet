@@ -16,7 +16,7 @@ class ForecastModule(torch.nn.Module):
         if xcols is None:
             xcols = []
         self.seasonality = xgbmodule.XGBModule(
-            n_features, 9 + len(xcols), 1, params=params
+            n_features, 10 + len(xcols), 1, params=params
         )
         self.xcols = xcols
         self.trend = torch.nn.Linear(1, 1)
@@ -55,6 +55,7 @@ class ForecastModule(torch.nn.Module):
                     "split_2",
                     "split_3",
                     "split_4",
+                    "year",
                     "minute",
                     "hour",
                     "month",
