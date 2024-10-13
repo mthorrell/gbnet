@@ -1,8 +1,8 @@
 from unittest import mock
 
-import xgboost as xgb
 import numpy as np
 import torch
+import xgboost as xgb
 
 from gbnet import xgbmodule as xgm
 

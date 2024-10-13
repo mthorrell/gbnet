@@ -2,8 +2,8 @@ import time
 
 import lightgbm as lgb
 import numpy as np
-import xgboost as xgb
 import torch
+import xgboost as xgb
 
 from gbnet import lgbmodule, xgbmodule
 
