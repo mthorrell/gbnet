@@ -1,0 +1,3 @@
+{
+    "exclude": ["gbnet/tests/test_readme_examples.py"]
+}
