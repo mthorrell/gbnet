@@ -1,16 +1,29 @@
 # gbnet
 
-Gradient Boosting Modules for pytorch
-
-## Introduction
-
-Gradient Boosting Machines only require gradients and, for modern packages, hessians to train. Pytorch (and other neural network packages) calculates gradients and hessians. GBMs can therefore be fit as the first layer in neural networks using Pytorch. This package provides access to XGBoost and LightGBM as Pytorch Modules to do exactly this.
-
-CatBoost is supported in an experimental capacity since the current gbnet integration with CatBoost is not as performant as the other GBDT packages.
+Gradient boosting libraries integrated with Pytorch
 
 ## Install
 
 `pip install gbnet`
+
+## Introduction
+
+There are two main components of `gbnet`:
+- (1) `gbnet` provides the Pytorch Modules that allow fitting of XGBoost and/or LightGBM models using Pytorch's computational network and differentiation capabilities.
+    - For example, if $`F(X)`$ is the output of an XGBoost model, you can use Pytorch to define the loss function, $`L(y, F(X))`$. Pytorch handles the gradients of $`L`$ so, as a user, you only specify the loss function.
+    - You can also fit two (or more) boosted models together with Pytorch-supported parametric components.  For instance, a recommendation prediction might look like this: $`\sigma(F(user) \times G(item))`$ where both $`F`$ and $`G`$ are separate boosting models producing embeddings of users and items respectively. `gbnet` makes defining and fitting such a model almost as easy as using Pytorch itself.
+
+- (2) `gbnet` provides specific example estimators that accomplish things that were not previously possible using only XGBoost or LightGBM.
+    - You can find these estimators in `gbnet/models/`. Right now there is a forecasting model that in the settings we tested, beats the performance of Meta's Prophet algorithm (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison).
+    - Other models with plans to be integrated are Ordinal Regression and Time-varying Survival analysis.
+
+## Conceptually, how can Pytorch be used to fit XGBoost or LightGBM models?
+
+Gradient Boosting Machines only require gradients and, for modern packages, hessians to train. Pytorch (and other neural network packages) calculates gradients and hessians. GBMs can therefore be fit as the first layer in neural networks using Pytorch.
+
+CatBoost is also supported but in an experimental capacity since the current gbnet integration with CatBoost is not as performant as the other GBDT packages.
+
+
 
 ## Troubleshooting
 
