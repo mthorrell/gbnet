@@ -17,7 +17,51 @@ There are two main components of `gbnet`:
     - You can find these estimators in `gbnet/models/`. Right now there is a forecasting model that in the settings we tested, beats the performance of Meta's Prophet algorithm (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison).
     - Other models with plans to be integrated are Ordinal Regression and Time-varying Survival analysis.
 
-## Conceptually, how can Pytorch be used to fit XGBoost or LightGBM models?
+## Models
+
+### Forecasting
+
+`gbnet.models.forecasting.Forecast` outperforms Meta's popular Prophet algorithm on basic benchmarks (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison).  Starter comparison code:
+
+```python
+import pandas as pd
+from sklearn.metrics import root_mean_squared_error
+
+from gbnet.models import forecasting
+
+## Load and split data
+url = "https://raw.githubusercontent.com/facebook/prophet/main/examples/example_yosemite_temps.csv"
+df = pd.read_csv(url)
+df['ds'] = pd.to_datetime(df['ds'])
+
+train = df[df['ds'] < df['ds'].median()].reset_index(drop=True).copy()
+test = df[df['ds'] >= df['ds'].median()].reset_index(drop=True).copy()
+
+## train and predict comparing out-of-the-box gbnet & prophet
+
+# gbnet
+gbnet_forecast_model = forecasting.Forecast()
+gbnet_forecast_model.fit(train, train['y'])
+test['gbnet_pred'] = gbnet_forecast_model.predict(test)
+
+# prophet
+prophet_model = Prophet()
+prophet_model.fit(train)
+test['prophet_pred'] = prophet_model.predict(test)['yhat']
+
+sel = test['y'].notnull()
+print(f"gbnet rmse: {root_mean_squared_error(test[sel]['y'], test[sel]['gbnet_pred'])}")
+print(f"prophet rmse: {root_mean_squared_error(test[sel]['y'], test[sel]['prophet_pred'])}")
+
+# gbnet rmse: 11.036844941272257
+# prophet rmse: 20.10509806878121
+```
+
+## Pytorch Modules
+
+There are currently just two Pytorch Modules: `lgbmodule.LGBModule` and `xgbmodule.XGBModule`. These create the interface between Pytorch and the LightGBM and XGBoost packages respectively.
+
+### Conceptually, how can Pytorch be used to fit XGBoost or LightGBM models?
 
 Gradient Boosting Machines only require gradients and, for modern packages, hessians to train. Pytorch (and other neural network packages) calculates gradients and hessians. GBMs can therefore be fit as the first layer in neural networks using Pytorch.
 
@@ -25,11 +69,11 @@ CatBoost is also supported but in an experimental capacity since the current gbn
 
 
 
-## Troubleshooting
+### Is training a `gbnet` model closer to training a neural network or to training a GBM
 
-1. Currently, the biggest difference between training using `gbnet` vs basic `torch`, is that `gbnet`, like basic usage of `xgboost` and `lightgbm`, requires the entire dataset to be fed in. Cached predictions allow these packages to train quickly, and caching cannot happen if input batches change with each training/boosting round. Some additional info is provided in [#12](https://github.com/mthorrell/gbnet/issues/12).
+It's closer to training a GBM. Currently, the biggest difference between training using `gbnet` vs basic `torch`, is that `gbnet`, like basic usage of `xgboost` and `lightgbm`, requires the entire dataset to be fed in. Cached predictions allow these packages to train quickly, and caching cannot happen if input batches change with each training/boosting round. Some additional info is provided in [#12](https://github.com/mthorrell/gbnet/issues/12).
 
-## Basic training of a GBM for comparison to existing packages
+### Basic training of a GBM for comparison to existing gradient boosting packages
 
 ```python
 import time
@@ -105,7 +149,7 @@ print(f'xgbmodule time: {t3 - t2}') # 0.166
 print(f'lgbmodule time: {t4 - t3}') # 0.123
 ```
 
-## Training XGBoost and LightGBM together
+### Training XGBoost and LightGBM together
 
 ```python
 import time
