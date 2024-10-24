@@ -69,7 +69,7 @@ CatBoost is also supported but in an experimental capacity since the current gbn
 
 
 
-### Is training a `gbnet` model closer to training a neural network or to training a GBM
+### Is training a `gbnet` model closer to training a neural network or to training a GBM?
 
 It's closer to training a GBM. Currently, the biggest difference between training using `gbnet` vs basic `torch`, is that `gbnet`, like basic usage of `xgboost` and `lightgbm`, requires the entire dataset to be fed in. Cached predictions allow these packages to train quickly, and caching cannot happen if input batches change with each training/boosting round. Some additional info is provided in [#12](https://github.com/mthorrell/gbnet/issues/12).
 
