@@ -94,6 +94,46 @@ def recursive_split(df, column, depth):
 
 
 class Forecast(BaseEstimator, RegressorMixin):
+    """
+    A forecasting model class that implements a trend + seasonality + minor non-stationarity
+    model using gbnet.xgbmodule.XGBModule
+
+    Parameters
+    ----------
+    nrounds : int, default=3000
+        Number of training iterations (epochs) for the model. Overfitting seems to
+        be fine usually.
+    xcols : list, optional
+        List of column names to be used as input features for the model.
+    params : dict, optional
+        Dictionary of additional parameters to be passed to the underlying forecast model.
+
+    Attributes
+    ----------
+    nrounds : int
+        Number of training rounds for the model.
+    xcols : list
+        Input feature column names.
+    params : dict
+        Additional parameters passed to the forecast model.
+    model_ : ForecastModule or None
+        Trained forecast model instance. Set after fitting.
+    losses_ : list
+        List of loss values recorded at each training iteration.
+
+    Methods
+    -------
+    fit(X, y)
+        Trains the forecast model using the input features X and target variable y.
+        X must contain the datetime column 'ds'.
+    predict(X)
+        Predicts target values based on the input features X.
+
+    Notes
+    -----
+    The model uses a linear trend + some basic features in XGBModule. The 
+    loss function used is Mean Squared Error (MSE).
+    """
     def __init__(self, nrounds=3000, xcols=None, params=None):
         if params is None:
             params = {}
