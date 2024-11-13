@@ -24,19 +24,18 @@ class ForecastModule(torch.nn.Module):
         self.initialized = False
 
     def initialize(self, df):
-        X = df[["year"]].copy()
-        y = df[["y"]].copy()
-
-        if X["year"].std() == 0:
-            with torch.no_grad():
-                self.trend.weight.copy_(torch.Tensor([[0.0]]))
-                self.trend.bias.copy_(torch.Tensor(y.mean().values))
-            self.initialized = True
-            return
+        X = df.copy()
+        X = (
+            X[X["numeric_dt"].notnull() & X["y"].notnull()]
+            .reset_index(drop=True)
+            .copy()
+        )
 
         X["intercept"] = 1
-        X["year"] = (X["year"] - X["year"].mean()) / X["year"].std()
-        ests = lstsq(X[["intercept", "year"]], y)[0]
+        X["numeric_dt"] = (X["numeric_dt"] - X["numeric_dt"].mean()) / X[
+            "numeric_dt"
+        ].std()
+        ests = lstsq(X[["intercept", "numeric_dt"]], X[["y"]])[0]
 
         with torch.no_grad():
             self.trend.weight.copy_(torch.Tensor(ests[1:, :]))
@@ -131,9 +130,10 @@ class Forecast(BaseEstimator, RegressorMixin):
 
     Notes
     -----
-    The model uses a linear trend + some basic features in XGBModule. The 
+    The model uses a linear trend + some basic features in XGBModule. The
     loss function used is Mean Squared Error (MSE).
     """
+
     def __init__(self, nrounds=3000, xcols=None, params=None):
         if params is None:
             params = {}
@@ -179,6 +179,7 @@ class Forecast(BaseEstimator, RegressorMixin):
     @staticmethod
     def _prepare_dataframe(df):
         df["ds"] = pd.to_datetime(df["ds"])
+        df["numeric_dt"] = pd.to_numeric(df["ds"])
         df["month"] = df["ds"].dt.month
         df["year"] = df["ds"].dt.year
         df["day"] = df["ds"].dt.day
