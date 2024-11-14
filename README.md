@@ -25,6 +25,7 @@ There are two main components of `gbnet`:
 
 ```python
 import pandas as pd
+from prophet import Prophet
 from sklearn.metrics import root_mean_squared_error
 
 from gbnet.models import forecasting
@@ -53,7 +54,7 @@ sel = test['y'].notnull()
 print(f"gbnet rmse: {root_mean_squared_error(test[sel]['y'], test[sel]['gbnet_pred'])}")
 print(f"prophet rmse: {root_mean_squared_error(test[sel]['y'], test[sel]['prophet_pred'])}")
 
-# gbnet rmse: 11.036844941272257
+# gbnet rmse: 7.930621578059079
 # prophet rmse: 20.10509806878121
 ```
 
