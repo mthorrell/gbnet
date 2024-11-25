@@ -41,14 +41,15 @@ def test_readme_examples():
     xnet = xgbmodule.XGBModule(n, input_dim, output_dim, params={})
     xmse = torch.nn.MSELoss()
 
+    X_dmatrix = xgb.DMatrix(X)
     for i in range(iters):
         xnet.zero_grad()
-        xpred = xnet(X)
+        xpred = xnet(X_dmatrix)
 
         loss = 1 / 2 * xmse(xpred, torch.Tensor(Y))  # xgboost uses 1/2 (Y - P)^2
         loss.backward(create_graph=True)
 
-        xnet.gb_step(X)
+        xnet.gb_step(X_dmatrix)
     t3 = time.time()
 
     # LGBModule training
@@ -67,7 +68,10 @@ def test_readme_examples():
     assert np.isclose(
         0.0,
         np.max(
-            np.abs(xbst.predict(xgb.DMatrix(X)) - xnet(X).detach().numpy().flatten())
+            np.abs(
+                xbst.predict(xgb.DMatrix(X))
+                - xnet(X_dmatrix).detach().numpy().flatten()
+            )
         ),
         atol=1e-05,
     )
@@ -90,15 +94,19 @@ def test_combine_example():
             self.xgb = xgbmodule.XGBModule(n, input_dim, intermediate_dim, {"eta": 0.1})
             self.lgb = lgbmodule.LGBModule(n, input_dim, intermediate_dim, {"eta": 0.1})
             self.linear = torch.nn.Linear(intermediate_dim, output_dim)
+            self.xgb_input = None  # need to keep inputs around for caching
+            self.lgb_input = None
 
         def forward(self, input_array):
-            xpreds = self.xgb(input_array)
+            if self.xgb_input is None:
+                self.xgb_input = xgb.DMatrix(input_array)
+            xpreds = self.xgb(self.xgb_input)
             lpreds = self.lgb(input_array)
             preds = self.linear(xpreds + lpreds)
             return preds
 
         def gb_step(self, input_array):
-            self.xgb.gb_step(input_array)
+            self.xgb.gb_step(self.xgb_input)
             self.lgb.gb_step(input_array)
 
     # Generate Dataset

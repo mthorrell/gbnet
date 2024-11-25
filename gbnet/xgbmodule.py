@@ -38,16 +38,16 @@ class XGBModule(nn.Module):
             )
         )
 
-    def forward(self, input_array, return_tensor=True):
-        assert isinstance(input_array, np.ndarray), "Input must be a numpy array"
+    def forward(self, input_dmatrix, return_tensor=True):
+        assert isinstance(input_dmatrix, xgb.DMatrix), "Input must be an xgb.DMatrix"
         # TODO figure out actual batch training
         if self.training:
             if self.dtrain is not None:
                 preds = self.bst.predict(self.dtrain)
             else:
-                preds = self.bst.predict(xgb.DMatrix(input_array))
+                preds = self.bst.predict(input_dmatrix)
         else:
-            preds = self.bst.predict(xgb.DMatrix(input_array))
+            preds = self.bst.predict(input_dmatrix)
 
         if self.training:
             FX_detach = self.FX.detach()
@@ -66,7 +66,7 @@ class XGBModule(nn.Module):
                 )
         return preds
 
-    def gb_step(self, input_array):
+    def gb_step(self, input_dmatrix):
         grad = self.FX.grad * self.batch_size
 
         # parameters are independent row by row, so we can
@@ -83,9 +83,8 @@ class XGBModule(nn.Module):
 
         obj = XGBObj(grad, hess)
         if self.dtrain is None:
-            self.dtrain = xgb.DMatrix(
-                input_array, label=np.zeros(self.batch_size * self.output_dim)
-            )
+            input_dmatrix.set_label(np.zeros(self.batch_size * self.output_dim))
+            self.dtrain = input_dmatrix
 
         g, h = obj(np.zeros([self.batch_size, self.output_dim]), None)
 

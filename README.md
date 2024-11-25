@@ -9,19 +9,21 @@ Gradient boosting libraries integrated with Pytorch
 ## Introduction
 
 There are two main components of `gbnet`:
+
 - (1) `gbnet` provides the Pytorch Modules that allow fitting of XGBoost and/or LightGBM models using Pytorch's computational network and differentiation capabilities.
-    - For example, if $`F(X)`$ is the output of an XGBoost model, you can use Pytorch to define the loss function, $`L(y, F(X))`$. Pytorch handles the gradients of $`L`$ so, as a user, you only specify the loss function.
-    - You can also fit two (or more) boosted models together with Pytorch-supported parametric components.  For instance, a recommendation prediction might look like this: $`\sigma(F(user) \times G(item))`$ where both $`F`$ and $`G`$ are separate boosting models producing embeddings of users and items respectively. `gbnet` makes defining and fitting such a model almost as easy as using Pytorch itself.
+
+  - For example, if $`F(X)`$ is the output of an XGBoost model, you can use Pytorch to define the loss function, $`L(y, F(X))`$. Pytorch handles the gradients of $`L`$ so, as a user, you only specify the loss function.
+  - You can also fit two (or more) boosted models together with Pytorch-supported parametric components. For instance, a recommendation prediction might look like this: $`\sigma(F(user) \times G(item))`$ where both $`F`$ and $`G`$ are separate boosting models producing embeddings of users and items respectively. `gbnet` makes defining and fitting such a model almost as easy as using Pytorch itself.
 
 - (2) `gbnet` provides specific example estimators that accomplish things that were not previously possible using only XGBoost or LightGBM.
-    - You can find these estimators in `gbnet/models/`. Right now there is a forecasting model that in the settings we tested, beats the performance of Meta's Prophet algorithm (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison).
-    - Other models with plans to be integrated are Ordinal Regression and Time-varying Survival analysis.
+  - You can find these estimators in `gbnet/models/`. Right now there is a forecasting model that in the settings we tested, beats the performance of Meta's Prophet algorithm (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison).
+  - Other models with plans to be integrated are Ordinal Regression and Time-varying Survival analysis.
 
 ## Models
 
 ### Forecasting
 
-`gbnet.models.forecasting.Forecast` outperforms Meta's popular Prophet algorithm on basic benchmarks (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison).  Starter comparison code:
+`gbnet.models.forecasting.Forecast` outperforms Meta's popular Prophet algorithm on basic benchmarks (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison). Starter comparison code:
 
 ```python
 import pandas as pd
@@ -67,8 +69,6 @@ There are currently just two Pytorch Modules: `lgbmodule.LGBModule` and `xgbmodu
 Gradient Boosting Machines only require gradients and, for modern packages, hessians to train. Pytorch (and other neural network packages) calculates gradients and hessians. GBMs can therefore be fit as the first layer in neural networks using Pytorch.
 
 CatBoost is also supported but in an experimental capacity since the current gbnet integration with CatBoost is not as performant as the other GBDT packages.
-
-
 
 ### Is training a `gbnet` model closer to training a neural network or to training a GBM?
 
@@ -118,14 +118,15 @@ t2 = time.time()
 xnet = xgbmodule.XGBModule(n, input_dim, output_dim, params={})
 xmse = torch.nn.MSELoss()
 
+X_dmatrix = xgb.DMatrix(X)
 for i in range(iters):
     xnet.zero_grad()
-    xpred = xnet(X)
+    xpred = xnet(X_dmatrix)
 
     loss = 1/2 * xmse(xpred, torch.Tensor(Y))  # xgboost uses 1/2 (Y - P)^2
     loss.backward(create_graph=True)
 
-    xnet.gb_step(X)
+    xnet.gb_step(X_dmatrix)
 t3 = time.time()
 
 # LGBModule training
@@ -142,7 +143,7 @@ for i in range(iters):
 t4 = time.time()
 
 
-print(np.max(np.abs(xbst.predict(xgb.DMatrix(X)) - xnet(X).detach().numpy().flatten())))  # 9.537e-07
+print(np.max(np.abs(xbst.predict(xgb.DMatrix(X)) - xnet(X_dmatrix).detach().numpy().flatten())))  # 9.537e-07
 print(np.max(np.abs(lbst.predict(X) - lnet(X).detach().numpy().flatten())))  # 2.479e-07
 print(f'xgboost time: {t1 - t0}')   # 0.089
 print(f'lightgbm time: {t2 - t1}')  # 0.084
@@ -170,9 +171,13 @@ class GBPlus(torch.nn.Module):
         self.xgb = xgbmodule.XGBModule(n, input_dim, intermediate_dim, {'eta': 0.1})
         self.lgb = lgbmodule.LGBModule(n, input_dim, intermediate_dim, {'eta': 0.1})
         self.linear = torch.nn.Linear(intermediate_dim, output_dim)
+        self.xgb_input = None  # need to keep inputs around for caching
+        self.lgb_input = None
 
     def forward(self, input_array):
-        xpreds = self.xgb(input_array)
+        if self.xgb_input is None:
+            self.xgb_input = xgb.DMatrix(input_array)
+        xpreds = self.xgb(self.xgb_input)
         lpreds = self.lgb(input_array)
         preds = self.linear(xpreds + lpreds)
         return preds

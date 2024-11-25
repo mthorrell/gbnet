@@ -12,18 +12,17 @@ def test_basic_loss():
 
     gbm.zero_grad()
     np.random.seed(11010)
-    input_array = np.random.random([5, 3])
-    preds = gbm(input_array)
+    input_dmatrix = xgb.DMatrix(np.random.random([5, 3]))
+    preds = gbm(input_dmatrix)
     loss = floss(preds.flatten(), torch.Tensor(np.array([1, 2, 3, 4, 5])).flatten())
 
     loss.backward(create_graph=True)
 
     with (
         mock.patch("gbnet.xgbmodule.XGBObj", side_effect=xgm.XGBObj) as m_obj,
-        mock.patch("xgboost.DMatrix", side_effect=xgb.DMatrix) as m_DMatrix,
         mock.patch.object(gbm.bst, "boost", side_effect=gbm.bst.boost) as m_boost,
     ):
-        gbm.gb_step(input_array)
+        gbm.gb_step(input_dmatrix)
 
     assert np.all(
         np.isclose(
@@ -38,8 +37,6 @@ def test_basic_loss():
         )
     )
 
-    assert np.all(np.isclose(m_DMatrix.call_args_list[-1].args[0], input_array))
-    assert np.all(np.isclose(m_DMatrix.call_args_list[-1].kwargs["label"], np.zeros(5)))
     m_boost.assert_called_once()
 
 
