@@ -55,16 +55,19 @@ def test_readme_examples():
     # LGBModule training
     lnet = lgbmodule.LGBModule(n, input_dim, output_dim, params={})
     lmse = torch.nn.MSELoss()
+
+    X_dataset = lgb.Dataset(X)
     for i in range(iters):
         lnet.zero_grad()
-        lpred = lnet(X)
+        lpred = lnet(X_dataset)
 
         loss = lmse(lpred, torch.Tensor(Y))
         loss.backward(create_graph=True)
 
-        lnet.gb_step(X)
+        lnet.gb_step(X_dataset)
     t4 = time.time()
 
+    lnet.eval()
     assert np.isclose(
         0.0,
         np.max(
@@ -100,14 +103,16 @@ def test_combine_example():
         def forward(self, input_array):
             if self.xgb_input is None:
                 self.xgb_input = xgb.DMatrix(input_array)
+            if self.lgb_input is None:
+                self.lgb_input = lgb.Dataset(input_array)
             xpreds = self.xgb(self.xgb_input)
-            lpreds = self.lgb(input_array)
+            lpreds = self.lgb(self.lgb_input)
             preds = self.linear(xpreds + lpreds)
             return preds
 
         def gb_step(self, input_array):
             self.xgb.gb_step(self.xgb_input)
-            self.lgb.gb_step(input_array)
+            self.lgb.gb_step(self.lgb_input)
 
     # Generate Dataset
     np.random.seed(100)

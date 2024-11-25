@@ -29,7 +29,13 @@ class LGBModule(nn.Module):
         self.train_dat = None
 
     def forward(self, input_array, return_tensor=True):
-        assert isinstance(input_array, np.ndarray), "Input must be a numpy array"
+        if self.training:
+            assert isinstance(
+                input_array, lgb.Dataset
+            ), "Input must be an lightgbm.Dataset"
+        else:
+            assert isinstance(input_array, np.ndarray), "Input must be a numpy array"
+
         # TODO figure out how actual batch training works here
         if self.training:
             if self.bst:
@@ -61,7 +67,7 @@ class LGBModule(nn.Module):
                 )
         return preds
 
-    def gb_step(self, input_array):
+    def gb_step(self, input_dataset: lgb.Dataset):
         grad = self.FX.grad * self.batch_size
 
         # parameters are independent row by row, so we can
@@ -90,10 +96,11 @@ class LGBModule(nn.Module):
         if self.bst is not None:
             self.bst.update(train_set=self.train_dat, fobj=obj)
         else:
-            self.train_dat = lgb.Dataset(
-                input_array,
-                params={"verbose": -1},
-            )
+            if input_dataset.params is None:
+                input_dataset.params = {"verbose": -1}
+            else:
+                input_dataset.params.update({"verbose": -1})
+            self.train_dat = input_dataset
             self.bst = lgb.train(
                 params=input_params,
                 train_set=self.train_dat,
