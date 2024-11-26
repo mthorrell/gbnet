@@ -1,5 +1,6 @@
 import lightgbm as lgb
 import numpy as np
+import pandas as pd
 import torch
 from torch import nn
 
@@ -34,7 +35,9 @@ class LGBModule(nn.Module):
                 input_array, lgb.Dataset
             ), "Input must be an lightgbm.Dataset"
         else:
-            assert isinstance(input_array, np.ndarray), "Input must be a numpy array"
+            assert isinstance(input_array, np.ndarray) or isinstance(
+                input_array, pd.DataFrame
+            ), "Input must be a numpy array"
 
         # TODO figure out how actual batch training works here
         if self.training:
