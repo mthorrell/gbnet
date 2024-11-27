@@ -127,6 +127,7 @@ for i in range(iters):
     loss.backward(create_graph=True)
 
     xnet.gb_step()
+xnet.eval()  # like any torch module, use eval mode for predictions
 t3 = time.time()
 
 # LGBModule training
@@ -142,9 +143,8 @@ for i in range(iters):
     loss.backward(create_graph=True)
 
     lnet.gb_step()
+lnet.eval()  # use eval mode for predictions
 t4 = time.time()
-lnet.eval()
-
 
 print(np.max(np.abs(xbst.predict(xgb.DMatrix(X)) - xnet(X_dmatrix).detach().numpy().flatten())))  # 9.537e-07
 print(np.max(np.abs(lbst.predict(X) - lnet(X).detach().numpy().flatten())))  # 2.479e-07
@@ -215,4 +215,4 @@ t1 = time.time()
 print(t1 - t0)  # 5.821
 ```
 
-<img width="750" alt="image" src="https://github.com/mthorrell/gbmodule/assets/15166269/949c7000-7fc3-4600-8916-03cdf60eeeb8">
+<img width="600" alt="image" src="https://github.com/mthorrell/gbmodule/assets/15166269/949c7000-7fc3-4600-8916-03cdf60eeeb8">
