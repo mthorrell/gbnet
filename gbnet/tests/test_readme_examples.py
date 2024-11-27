@@ -49,7 +49,8 @@ def test_readme_examples():
         loss = 1 / 2 * xmse(xpred, torch.Tensor(Y))  # xgboost uses 1/2 (Y - P)^2
         loss.backward(create_graph=True)
 
-        xnet.gb_step(X_dmatrix)
+        xnet.gb_step()
+    xnet.eval()
     t3 = time.time()
 
     # LGBModule training
@@ -64,10 +65,10 @@ def test_readme_examples():
         loss = lmse(lpred, torch.Tensor(Y))
         loss.backward(create_graph=True)
 
-        lnet.gb_step(X_dataset)
+        lnet.gb_step()
+    lnet.eval()
     t4 = time.time()
 
-    lnet.eval()
     assert np.isclose(
         0.0,
         np.max(
@@ -97,22 +98,16 @@ def test_combine_example():
             self.xgb = xgbmodule.XGBModule(n, input_dim, intermediate_dim, {"eta": 0.1})
             self.lgb = lgbmodule.LGBModule(n, input_dim, intermediate_dim, {"eta": 0.1})
             self.linear = torch.nn.Linear(intermediate_dim, output_dim)
-            self.xgb_input = None  # need to keep inputs around for caching
-            self.lgb_input = None
 
         def forward(self, input_array):
-            if self.xgb_input is None:
-                self.xgb_input = xgb.DMatrix(input_array)
-            if self.lgb_input is None:
-                self.lgb_input = lgb.Dataset(input_array)
-            xpreds = self.xgb(self.xgb_input)
-            lpreds = self.lgb(self.lgb_input)
+            xpreds = self.xgb(xgb.DMatrix(input_array))
+            lpreds = self.lgb(lgb.Dataset(input_array))
             preds = self.linear(xpreds + lpreds)
             return preds
 
-        def gb_step(self, input_array):
-            self.xgb.gb_step(self.xgb_input)
-            self.lgb.gb_step(self.lgb_input)
+        def gb_step(self):
+            self.xgb.gb_step()
+            self.lgb.gb_step()
 
     # Generate Dataset
     np.random.seed(100)
@@ -138,7 +133,7 @@ def test_combine_example():
         loss.backward(create_graph=True)  # create_graph=True required for any gbnet
         losses.append(loss.detach().numpy().copy())
 
-        gbp.gb_step(X)  # required to update the gbms
+        gbp.gb_step()  # required to update the gbms
         optimizer.step()
     t1 = time.time()
     assert losses[-1] < 1e-07

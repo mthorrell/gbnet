@@ -42,10 +42,10 @@ class XGBModule(nn.Module):
         assert isinstance(input_dmatrix, xgb.DMatrix), "Input must be an xgb.DMatrix"
         # TODO figure out actual batch training
         if self.training:
-            if self.dtrain is not None:
-                preds = self.bst.predict(self.dtrain)
-            else:
-                preds = self.bst.predict(input_dmatrix)
+            if self.dtrain is None:
+                input_dmatrix.set_label(np.zeros(self.batch_size * self.output_dim))
+                self.dtrain = input_dmatrix
+            preds = self.bst.predict(self.dtrain)
         else:
             preds = self.bst.predict(input_dmatrix)
 
@@ -66,7 +66,7 @@ class XGBModule(nn.Module):
                 )
         return preds
 
-    def gb_step(self, input_dmatrix):
+    def gb_step(self):
         grad = self.FX.grad * self.batch_size
 
         # parameters are independent row by row, so we can
@@ -82,10 +82,6 @@ class XGBModule(nn.Module):
         hess = torch.cat(hesses, axis=1)
 
         obj = XGBObj(grad, hess)
-        if self.dtrain is None:
-            input_dmatrix.set_label(np.zeros(self.batch_size * self.output_dim))
-            self.dtrain = input_dmatrix
-
         g, h = obj(np.zeros([self.batch_size, self.output_dim]), None)
 
         if xgb.__version__ <= "2.0.3":

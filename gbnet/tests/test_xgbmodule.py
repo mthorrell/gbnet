@@ -22,7 +22,7 @@ def test_basic_loss():
         mock.patch("gbnet.xgbmodule.XGBObj", side_effect=xgm.XGBObj) as m_obj,
         mock.patch.object(gbm.bst, "boost", side_effect=gbm.bst.boost) as m_boost,
     ):
-        gbm.gb_step(input_dmatrix)
+        gbm.gb_step()
 
     assert np.all(
         np.isclose(

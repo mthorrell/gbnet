@@ -24,7 +24,7 @@ def test_basic_loss():
         mock.patch("gbnet.lgbmodule.LightGBObj", m_obj),
         mock.patch("lightgbm.train", m_train),
     ):
-        gbm.gb_step(input_dataset)
+        gbm.gb_step()
 
     assert (
         np.max(

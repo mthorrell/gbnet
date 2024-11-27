@@ -146,7 +146,7 @@ class ForecastModule(torch.nn.Module):
         return forecast
 
     def gb_step(self):
-        self.periodic_fn.gb_step(self.X)
+        self.periodic_fn.gb_step()
 
 
 class NSForecastModule(torch.nn.Module):
@@ -212,7 +212,7 @@ class NSForecastModule(torch.nn.Module):
         return output
 
     def gb_step(self):
-        self.seasonality.gb_step(self.minput)
+        self.seasonality.gb_step()
 
 
 def recursive_split(df, column, depth):
