@@ -12,21 +12,19 @@ def test_basic_loss():
 
     gbm.zero_grad()
     np.random.seed(11010)
-    input_array = np.random.random([5, 3])
-    preds = gbm(input_array)
+    input_dataset = lgb.Dataset(np.random.random([5, 3]))
+    preds = gbm(input_dataset)
     loss = floss(preds.flatten(), torch.Tensor(np.array([1, 2, 3, 4, 5])).flatten())
 
     loss.backward(create_graph=True)
 
     m_obj = mock.MagicMock(side_effect=lgm.LightGBObj)
-    m_Dataset = mock.MagicMock(side_effect=lgb.Dataset)
     m_train = mock.MagicMock(side_effect=lgb.train)
     with (
         mock.patch("gbnet.lgbmodule.LightGBObj", m_obj),
-        mock.patch("lightgbm.Dataset", m_Dataset),
         mock.patch("lightgbm.train", m_train),
     ):
-        gbm.gb_step(input_array)
+        gbm.gb_step()
 
     assert (
         np.max(
@@ -48,7 +46,6 @@ def test_basic_loss():
         < 1e-8
     )
 
-    m_Dataset.assert_called_once_with(input_array, params={"verbose": -1})
     m_train.assert_called_once()
 
 

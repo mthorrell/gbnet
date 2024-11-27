@@ -41,33 +41,41 @@ def test_readme_examples():
     xnet = xgbmodule.XGBModule(n, input_dim, output_dim, params={})
     xmse = torch.nn.MSELoss()
 
+    X_dmatrix = xgb.DMatrix(X)
     for i in range(iters):
         xnet.zero_grad()
-        xpred = xnet(X)
+        xpred = xnet(X_dmatrix)
 
         loss = 1 / 2 * xmse(xpred, torch.Tensor(Y))  # xgboost uses 1/2 (Y - P)^2
         loss.backward(create_graph=True)
 
-        xnet.gb_step(X)
+        xnet.gb_step()
+    xnet.eval()
     t3 = time.time()
 
     # LGBModule training
     lnet = lgbmodule.LGBModule(n, input_dim, output_dim, params={})
     lmse = torch.nn.MSELoss()
+
+    X_dataset = lgb.Dataset(X)
     for i in range(iters):
         lnet.zero_grad()
-        lpred = lnet(X)
+        lpred = lnet(X_dataset)
 
         loss = lmse(lpred, torch.Tensor(Y))
         loss.backward(create_graph=True)
 
-        lnet.gb_step(X)
+        lnet.gb_step()
+    lnet.eval()
     t4 = time.time()
 
     assert np.isclose(
         0.0,
         np.max(
-            np.abs(xbst.predict(xgb.DMatrix(X)) - xnet(X).detach().numpy().flatten())
+            np.abs(
+                xbst.predict(xgb.DMatrix(X))
+                - xnet(X_dmatrix).detach().numpy().flatten()
+            )
         ),
         atol=1e-05,
     )
@@ -92,14 +100,14 @@ def test_combine_example():
             self.linear = torch.nn.Linear(intermediate_dim, output_dim)
 
         def forward(self, input_array):
-            xpreds = self.xgb(input_array)
-            lpreds = self.lgb(input_array)
+            xpreds = self.xgb(xgb.DMatrix(input_array))
+            lpreds = self.lgb(lgb.Dataset(input_array))
             preds = self.linear(xpreds + lpreds)
             return preds
 
-        def gb_step(self, input_array):
-            self.xgb.gb_step(input_array)
-            self.lgb.gb_step(input_array)
+        def gb_step(self):
+            self.xgb.gb_step()
+            self.lgb.gb_step()
 
     # Generate Dataset
     np.random.seed(100)
@@ -125,7 +133,7 @@ def test_combine_example():
         loss.backward(create_graph=True)  # create_graph=True required for any gbnet
         losses.append(loss.detach().numpy().copy())
 
-        gbp.gb_step(X)  # required to update the gbms
+        gbp.gb_step()  # required to update the gbms
         optimizer.step()
     t1 = time.time()
     assert losses[-1] < 1e-07

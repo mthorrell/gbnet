@@ -38,16 +38,16 @@ class XGBModule(nn.Module):
             )
         )
 
-    def forward(self, input_array, return_tensor=True):
-        assert isinstance(input_array, np.ndarray), "Input must be a numpy array"
+    def forward(self, input_dmatrix, return_tensor=True):
+        assert isinstance(input_dmatrix, xgb.DMatrix), "Input must be an xgb.DMatrix"
         # TODO figure out actual batch training
         if self.training:
-            if self.dtrain is not None:
-                preds = self.bst.predict(self.dtrain)
-            else:
-                preds = self.bst.predict(xgb.DMatrix(input_array))
+            if self.dtrain is None:
+                input_dmatrix.set_label(np.zeros(self.batch_size * self.output_dim))
+                self.dtrain = input_dmatrix
+            preds = self.bst.predict(self.dtrain)
         else:
-            preds = self.bst.predict(xgb.DMatrix(input_array))
+            preds = self.bst.predict(input_dmatrix)
 
         if self.training:
             FX_detach = self.FX.detach()
@@ -66,7 +66,7 @@ class XGBModule(nn.Module):
                 )
         return preds
 
-    def gb_step(self, input_array):
+    def gb_step(self):
         grad = self.FX.grad * self.batch_size
 
         # parameters are independent row by row, so we can
@@ -82,11 +82,6 @@ class XGBModule(nn.Module):
         hess = torch.cat(hesses, axis=1)
 
         obj = XGBObj(grad, hess)
-        if self.dtrain is None:
-            self.dtrain = xgb.DMatrix(
-                input_array, label=np.zeros(self.batch_size * self.output_dim)
-            )
-
         g, h = obj(np.zeros([self.batch_size, self.output_dim]), None)
 
         if xgb.__version__ <= "2.0.3":
@@ -118,7 +113,11 @@ class XGBObj:
             M = preds.shape[0]
             N = 1
 
-        g = self.grad.detach().numpy().reshape([M * N, 1])
-        h = self.hess.detach().numpy().reshape([M * N, 1])
+        if xgb.__version__ >= "2.1.0":
+            g = self.grad.detach().numpy().reshape([M, N])
+            h = self.hess.detach().numpy().reshape([M, N])
+        else:
+            g = self.grad.detach().numpy().reshape([M * N, 1])
+            h = self.hess.detach().numpy().reshape([M * N, 1])
 
         return g, h

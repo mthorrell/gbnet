@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+import xgboost as xgb
 from gbnet import xgbmodule
 from scipy.linalg import lstsq
 from sklearn.base import BaseEstimator, RegressorMixin
@@ -130,7 +131,7 @@ class ForecastModule(torch.nn.Module):
             self.initialize(df)
 
         X = np.array(df[["year", "month", "day", "hour", "minute", "weekday"]])
-        self.X = X
+        self.X = xgb.DMatrix(X)
 
         forecast = (
             ###### linear trend defined via torch.nn.Linear
@@ -140,12 +141,12 @@ class ForecastModule(torch.nn.Module):
                 )
             )
             ###### datetime components plugged into gbnet.xgbmodule.XGBModule
-            + self.periodic_fn(np.array(X))
+            + self.periodic_fn(self.X)
         )
         return forecast
 
     def gb_step(self):
-        self.periodic_fn.gb_step(self.X)
+        self.periodic_fn.gb_step()
 
 
 class NSForecastModule(torch.nn.Module):
@@ -206,12 +207,12 @@ class NSForecastModule(torch.nn.Module):
         )
         trend = torch.Tensor(df["year"].values).reshape([-1, 1])
 
-        self.minput = datetime_features
-        output = self.trend(self.bn(trend)) + self.seasonality(datetime_features)
+        self.minput = xgb.DMatrix(datetime_features)
+        output = self.trend(self.bn(trend)) + self.seasonality(self.minput)
         return output
 
     def gb_step(self):
-        self.seasonality.gb_step(self.minput)
+        self.seasonality.gb_step()
 
 
 def recursive_split(df, column, depth):
