@@ -113,7 +113,11 @@ class XGBObj:
             M = preds.shape[0]
             N = 1
 
-        g = self.grad.detach().numpy().reshape([M * N, 1])
-        h = self.hess.detach().numpy().reshape([M * N, 1])
+        if xgb.__version__ >= "2.1.0":
+            g = self.grad.detach().numpy().reshape([M, N])
+            h = self.hess.detach().numpy().reshape([M, N])
+        else:
+            g = self.grad.detach().numpy().reshape([M * N, 1])
+            h = self.hess.detach().numpy().reshape([M * N, 1])
 
         return g, h

@@ -47,6 +47,11 @@ def test_XGBObj():
 
     obj = xgm.XGBObj(grad, hess)
 
-    ograd, ohess = obj(grad, hess)
-    assert np.all(np.isclose(ograd, grad.detach().numpy().reshape([-1, 1])))
-    assert np.all(np.isclose(ohess, hess.detach().numpy().reshape([-1, 1])))
+    with mock.patch("xgboost.__version__", new="2.0.0"):
+        ograd, ohess = obj(grad, hess)
+        assert np.all(np.isclose(ograd, grad.detach().numpy().reshape([-1, 1])))
+        assert np.all(np.isclose(ohess, hess.detach().numpy().reshape([-1, 1])))
+    with mock.patch("xgboost.__version__", new="2.1.0"):
+        ograd, ohess = obj(grad, hess)
+        assert np.all(np.isclose(ograd, grad.detach().numpy()))
+        assert np.all(np.isclose(ohess, hess.detach().numpy()))
