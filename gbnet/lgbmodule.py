@@ -122,4 +122,6 @@ class LightGBObj:
         self.hess = hess.detach().numpy()
 
     def __call__(self, y_true, y_pred):
-        return self.grad, self.hess
+        if self.grad.shape[1] > 1:
+            return self.grad, self.hess
+        return self.grad.flatten(), self.hess.flatten()
