@@ -1,3 +1,4 @@
+from typing import Union
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
@@ -34,24 +35,50 @@ class LGBModule(nn.Module):
             input_dataset.params = {"verbose": -1}
         else:
             input_dataset.params.update({"verbose": -1})
+        input_dataset.free_raw_data = False
         self.train_dat = input_dataset
 
-    def forward(self, input_dataset: lgb.Dataset, return_tensor=True):
+    def _input_checking_setting(
+        self, input_dataset: Union[lgb.Dataset, np.ndarray, pd.DataFrame]
+    ):
+        assert isinstance(input_dataset, (lgb.Dataset, np.ndarray, pd.DataFrame))
         if self.training:
-            assert isinstance(
-                input_dataset, lgb.Dataset
-            ), "Input must be an lightgbm.Dataset"
-        else:
-            assert isinstance(input_dataset, np.ndarray) or isinstance(
-                input_dataset, pd.DataFrame
-            ), "Input must be a numpy array or pandas DataFrame"
+            if self.train_dat is None:
+                self._set_train_dat(
+                    input_dataset
+                    if isinstance(input_dataset, lgb.Dataset)
+                    else lgb.Dataset(input_dataset)
+                )
+                self.training_n = self.train_dat.num_data()
+            check_n = (
+                input_dataset.num_data()
+                if isinstance(input_dataset, lgb.Dataset)
+                else input_dataset.shape[0]
+            )
+            assert (
+                check_n == self.training_n
+            ), "Changing datasets while training is not currently supported. If trying to make predictions, set Module to eval mode via `Module.eval()`"
+            return self.train_dat
+
+        if isinstance(input_dataset, lgb.Dataset):
+            # Clunky way to get original data
+            input_dataset.free_raw_data = False
+            input_dataset.construct()
+            return input_dataset.get_data()
+        return input_dataset
+
+    def forward(
+        self,
+        input_dataset: Union[lgb.Dataset, np.ndarray, pd.DataFrame],
+        return_tensor=True,
+    ):
+        input_dataset = self._input_checking_setting(input_dataset)
 
         # TODO figure out how actual batch training works here
         if self.training:
             if self.bst:
                 preds = self.bst._Booster__inner_predict(0).copy()
             else:
-                self._set_train_dat(input_dataset)
                 preds = np.zeros([self.batch_size, self.output_dim])
         else:
             if self.bst:
