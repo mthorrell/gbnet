@@ -29,6 +29,7 @@ class LGBModule(nn.Module):
             )
         )
         self.train_dat = None
+        self.training_n = None
 
     def _set_train_dat(self, input_dataset: lgb.Dataset):
         if input_dataset.params is None:
@@ -37,6 +38,7 @@ class LGBModule(nn.Module):
             input_dataset.params.update({"verbose": -1})
         input_dataset.free_raw_data = False
         self.train_dat = input_dataset
+        self.train_dat.construct()
 
     def _input_checking_setting(
         self, input_dataset: Union[lgb.Dataset, np.ndarray, pd.DataFrame]
@@ -50,8 +52,9 @@ class LGBModule(nn.Module):
                     else lgb.Dataset(input_dataset)
                 )
                 self.training_n = self.train_dat.num_data()
+            input_dataset.construct()
             check_n = (
-                input_dataset.num_data()
+                input_dataset.num_data()  ## needs to be compiled :'(
                 if isinstance(input_dataset, lgb.Dataset)
                 else input_dataset.shape[0]
             )
