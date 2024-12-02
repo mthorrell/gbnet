@@ -1,4 +1,4 @@
-from unittest import mock
+from unittest import mock, TestCase
 
 import numpy as np
 import torch
@@ -55,3 +55,79 @@ def test_XGBObj():
         ograd, ohess = obj(grad, hess)
         assert np.all(np.isclose(ograd, grad.detach().numpy()))
         assert np.all(np.isclose(ohess, hess.detach().numpy()))
+
+
+class TestInputChecking(TestCase):
+    def test_input_is_dmatrix_training_true_dtrain_none(self):
+        """Test with xgb.DMatrix input, training mode True, and dtrain is None."""
+        module = xgm.XGBModule(10, 5, 3)
+        data = np.random.rand(10, 5)
+        dmatrix = xgb.DMatrix(data)
+        result = module._input_checking_setting(dmatrix)
+        self.assertIs(result, module.dtrain)
+        self.assertIs(result, dmatrix)
+        np.testing.assert_array_equal(
+            result.get_label(), np.zeros(module.batch_size * module.output_dim)
+        )
+        self.assertEqual(module.training_n, dmatrix.num_row())
+
+    def test_input_is_ndarray_training_true_dtrain_none(self):
+        """Test with np.ndarray input, training mode True, and dtrain is None."""
+        module = xgm.XGBModule(10, 5, 3)
+        data = np.random.rand(10, 5)
+        result = module._input_checking_setting(data)
+        self.assertIs(result, module.dtrain)
+        self.assertIsInstance(result, xgb.DMatrix)
+        np.testing.assert_array_equal(
+            result.get_label(), np.zeros(module.batch_size * module.output_dim)
+        )
+        self.assertEqual(module.training_n, data.shape[0])
+
+    def test_input_is_dmatrix_training_true_dtrain_set_same_nrows(self):
+        """Test with xgb.DMatrix input, training mode True, and dtrain already set with same number of rows."""
+        module = xgm.XGBModule(10, 5, 3)
+        data = np.random.rand(10, 5)
+        dmatrix = xgb.DMatrix(data)
+        result = module._input_checking_setting(dmatrix)
+        self.assertIs(result, module.dtrain)
+        self.assertIs(result, dmatrix)
+
+    def test_input_is_dmatrix_training_true_dtrain_set_different_nrows(self):
+        """Test with xgb.DMatrix input, training mode True, and dtrain already set with different number of rows."""
+        module = xgm.XGBModule(10, 5, 3)
+        data1 = np.random.rand(10, 5)
+        module(data1)
+        data2 = np.random.rand(5, 5)
+        with self.assertRaises(AssertionError) as context:
+            module(data2)
+        self.assertIn(
+            "Changing datasets while training is not currently supported",
+            str(context.exception),
+        )
+
+    def test_input_is_dmatrix_training_false(self):
+        """Test with xgb.DMatrix input and training mode False."""
+        module = xgm.XGBModule(10, 5, 3)
+        module(np.random.rand(10, 5))
+        module.eval()
+        data = np.random.rand(10, 5)
+        dmatrix = xgb.DMatrix(data)
+        result = module._input_checking_setting(dmatrix)
+        self.assertIs(result, dmatrix)
+
+    def test_input_is_ndarray_training_false(self):
+        """Test with np.ndarray input and training mode False."""
+        module = xgm.XGBModule(10, 5, 3)
+        module(np.random.rand(10, 5))
+        module.eval()
+        data = np.random.rand(10, 5)
+        result = module._input_checking_setting(data)
+        self.assertIsInstance(result, xgb.DMatrix)
+        self.assertEqual(result.num_row(), data.shape[0])
+
+    def test_input_invalid_type(self):
+        """Test with invalid input type."""
+        module = xgm.XGBModule(10, 5, 3)
+        data = [1, 2, 3]  # Invalid type
+        with self.assertRaises(AssertionError):
+            module._input_checking_setting(data)

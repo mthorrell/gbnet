@@ -100,8 +100,8 @@ def test_combine_example():
             self.linear = torch.nn.Linear(intermediate_dim, output_dim)
 
         def forward(self, input_array):
-            xpreds = self.xgb(xgb.DMatrix(input_array))
-            lpreds = self.lgb(lgb.Dataset(input_array))
+            xpreds = self.xgb(input_array)
+            lpreds = self.lgb(input_array)
             preds = self.linear(xpreds + lpreds)
             return preds
 

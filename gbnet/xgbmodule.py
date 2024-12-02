@@ -1,4 +1,6 @@
+from typing import Union
 import numpy as np
+import pandas as pd
 import torch
 import xgboost as xgb
 from torch import nn
@@ -30,6 +32,7 @@ class XGBModule(nn.Module):
         )
         self.n_completed_boost_rounds = 0
         self.dtrain = None
+        self.training_n = None
 
         self.FX = nn.Parameter(
             torch.tensor(
@@ -38,16 +41,39 @@ class XGBModule(nn.Module):
             )
         )
 
-    def forward(self, input_dmatrix, return_tensor=True):
-        assert isinstance(input_dmatrix, xgb.DMatrix), "Input must be an xgb.DMatrix"
-        # TODO figure out actual batch training
+    def _input_checking_setting(
+        self, input_data: Union[xgb.DMatrix, pd.DataFrame, np.ndarray]
+    ):
+        assert isinstance(input_data, (xgb.DMatrix, pd.DataFrame, np.ndarray))
         if self.training:
             if self.dtrain is None:
-                input_dmatrix.set_label(np.zeros(self.batch_size * self.output_dim))
-                self.dtrain = input_dmatrix
-            preds = self.bst.predict(self.dtrain)
-        else:
-            preds = self.bst.predict(input_dmatrix)
+                if isinstance(input_data, xgb.DMatrix):
+                    input_data.set_label(np.zeros(self.batch_size * self.output_dim))
+                    self.dtrain = input_data
+                    self.training_n = input_data.num_row()
+                else:
+                    self.dtrain = xgb.DMatrix(
+                        input_data, label=np.zeros(self.batch_size * self.output_dim)
+                    )
+                    self.training_n = input_data.shape[0]
+            compare_n = (
+                input_data.num_row()
+                if isinstance(input_data, xgb.DMatrix)
+                else input_data.shape[0]
+            )
+            assert (
+                compare_n == self.training_n
+            ), "Changing datasets while training is not currently supported. If trying to make predictions, set Module to eval mode via `Module.eval()`"
+            return self.dtrain
+        return (
+            input_data
+            if isinstance(input_data, xgb.DMatrix)
+            else xgb.DMatrix(input_data)
+        )
+
+    def forward(self, input_data, return_tensor: bool = True):
+        input_data = self._input_checking_setting(input_data)
+        preds = self.bst.predict(input_data)
 
         if self.training:
             FX_detach = self.FX.detach()
