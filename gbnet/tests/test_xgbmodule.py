@@ -88,8 +88,6 @@ class TestInputChecking(TestCase):
         module = xgm.XGBModule(10, 5, 3)
         data = np.random.rand(10, 5)
         dmatrix = xgb.DMatrix(data)
-        module.dtrain = dmatrix
-        module.training_n = dmatrix.num_row()
         result = module._input_checking_setting(dmatrix)
         self.assertIs(result, module.dtrain)
         self.assertIs(result, dmatrix)
@@ -98,13 +96,10 @@ class TestInputChecking(TestCase):
         """Test with xgb.DMatrix input, training mode True, and dtrain already set with different number of rows."""
         module = xgm.XGBModule(10, 5, 3)
         data1 = np.random.rand(10, 5)
-        dmatrix1 = xgb.DMatrix(data1)
-        module.dtrain = dmatrix1
-        module.training_n = dmatrix1.num_row()
+        module(data1)
         data2 = np.random.rand(5, 5)
-        dmatrix2 = xgb.DMatrix(data2)
         with self.assertRaises(AssertionError) as context:
-            module._input_checking_setting(dmatrix2)
+            module(data2)
         self.assertIn(
             "Changing datasets while training is not currently supported",
             str(context.exception),
@@ -113,6 +108,8 @@ class TestInputChecking(TestCase):
     def test_input_is_dmatrix_training_false(self):
         """Test with xgb.DMatrix input and training mode False."""
         module = xgm.XGBModule(10, 5, 3)
+        module(np.random.rand(10, 5))
+        module.eval()
         data = np.random.rand(10, 5)
         dmatrix = xgb.DMatrix(data)
         result = module._input_checking_setting(dmatrix)
@@ -121,6 +118,8 @@ class TestInputChecking(TestCase):
     def test_input_is_ndarray_training_false(self):
         """Test with np.ndarray input and training mode False."""
         module = xgm.XGBModule(10, 5, 3)
+        module(np.random.rand(10, 5))
+        module.eval()
         data = np.random.rand(10, 5)
         result = module._input_checking_setting(data)
         self.assertIsInstance(result, xgb.DMatrix)

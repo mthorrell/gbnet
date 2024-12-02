@@ -52,9 +52,11 @@ class LGBModule(nn.Module):
                     else lgb.Dataset(input_dataset)
                 )
                 self.training_n = self.train_dat.num_data()
-            input_dataset.construct()
+            if isinstance(input_dataset, lgb.Dataset):
+                input_dataset.construct()
+
             check_n = (
-                input_dataset.num_data()  ## needs to be compiled :'(
+                input_dataset.num_data()
                 if isinstance(input_dataset, lgb.Dataset)
                 else input_dataset.shape[0]
             )
