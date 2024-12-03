@@ -44,7 +44,7 @@ class LGBModule(nn.Module):
     def _check_training_data(self):
         if self.train_dat.get_weight() is not None:
             warnings.warn(
-                "Weights will not work properly when defined as part of the input DMatrix. Weights should be defined in the loss."
+                "Weights will not work properly when defined as part of the input Dataset. Weights should be defined in the loss."
             )
 
     def _input_checking_setting(
