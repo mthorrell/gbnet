@@ -1,4 +1,5 @@
 from typing import Union
+import warnings
 import numpy as np
 import pandas as pd
 import torch
@@ -41,6 +42,12 @@ class XGBModule(nn.Module):
             )
         )
 
+    def _check_training_data(self):
+        if self.dtrain.get_weight().shape[0] > 0:
+            warnings.warn(
+                "Weights will not work properly when defined as part of the input DMatrix. Weights should be defined in the loss."
+            )
+
     def _input_checking_setting(
         self, input_data: Union[xgb.DMatrix, pd.DataFrame, np.ndarray]
     ):
@@ -51,6 +58,7 @@ class XGBModule(nn.Module):
                     input_data.set_label(np.zeros(self.batch_size * self.output_dim))
                     self.dtrain = input_data
                     self.training_n = input_data.num_row()
+                    self._check_training_data()
                 else:
                     self.dtrain = xgb.DMatrix(
                         input_data, label=np.zeros(self.batch_size * self.output_dim)

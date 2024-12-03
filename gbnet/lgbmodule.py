@@ -1,4 +1,5 @@
 from typing import Union
+import warnings
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
@@ -40,6 +41,12 @@ class LGBModule(nn.Module):
         self.train_dat = input_dataset
         self.train_dat.construct()
 
+    def _check_training_data(self):
+        if self.train_dat.get_weight() is not None:
+            warnings.warn(
+                "Weights will not work properly when defined as part of the input DMatrix. Weights should be defined in the loss."
+            )
+
     def _input_checking_setting(
         self, input_dataset: Union[lgb.Dataset, np.ndarray, pd.DataFrame]
     ):
@@ -52,6 +59,7 @@ class LGBModule(nn.Module):
                     else lgb.Dataset(input_dataset)
                 )
                 self.training_n = self.train_dat.num_data()
+                self._check_training_data()
             if isinstance(input_dataset, lgb.Dataset):
                 input_dataset.construct()
 
