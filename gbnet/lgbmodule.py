@@ -49,6 +49,16 @@ class LGBModule(nn.Module):
                     if isinstance(input_dataset, lgb.Dataset)
                     else lgb.Dataset(input_dataset)
                 )
+            if self.bst is None:
+                return self.train_dat
+            if isinstance(input_dataset, lgb.Dataset):
+                assert (
+                    input_dataset._handle is not None
+                ), "Changing datasets during training is not supported. If trying to do prediction, call LGBModule.eval() first."
+            else:  # NEW
+                assert (
+                    self.batch_size == input_dataset.shape[0]
+                ), "Changing datasets during training is not supported. If trying to do prediction, call LGBModule.eval() first."
             return self.train_dat
 
         if isinstance(input_dataset, lgb.Dataset):
