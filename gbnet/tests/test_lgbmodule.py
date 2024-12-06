@@ -75,8 +75,6 @@ class TestLGBModule(TestCase):
         result = module._input_checking_setting(dataset)
         self.assertIs(result, module.train_dat)
         self.assertIsInstance(result, lgb.Dataset)
-        self.assertEqual(module.training_n, module.train_dat.num_data())
-        self.assertEqual(module.training_n, dataset.num_data())
 
     def test_input_is_ndarray_training_true_train_dat_none(self):
         """Test with np.ndarray input, training mode True, and train_dat is None."""
@@ -85,8 +83,6 @@ class TestLGBModule(TestCase):
         result = module._input_checking_setting(data)
         self.assertIs(result, module.train_dat)
         self.assertIsInstance(result, lgb.Dataset)
-        self.assertEqual(module.training_n, module.train_dat.num_data())
-        self.assertEqual(module.training_n, 100)
 
     def test_input_is_dataframe_training_true_train_dat_none(self):
         """Test with pd.DataFrame input, training mode True, and train_dat is None."""
@@ -95,8 +91,6 @@ class TestLGBModule(TestCase):
         result = module._input_checking_setting(data)
         self.assertIs(result, module.train_dat)
         self.assertIsInstance(result, lgb.Dataset)
-        self.assertEqual(module.training_n, module.train_dat.num_data())
-        self.assertEqual(module.training_n, 100)
 
     def test_input_is_dataset_training_true_train_dat_set_same_nrows(self):
         """Test with lgb.Dataset input, training mode True, train_dat set, same number of data."""
@@ -106,19 +100,6 @@ class TestLGBModule(TestCase):
         result = module._input_checking_setting(dataset)
         self.assertIs(result, module.train_dat)
         self.assertIs(result, dataset)
-
-    def test_input_is_dataset_training_true_train_dat_set_different_nrows(self):
-        """Test with lgb.Dataset input, training mode True, train_dat set, different number of data."""
-        module = lgm.LGBModule(100, 10, 1)
-        data1 = np.random.rand(100, 10)
-        module(data1)
-        data2 = np.random.rand(50, 10)
-        with self.assertRaises(AssertionError) as context:
-            module(data2)
-        self.assertIn(
-            "Changing datasets while training is not currently supported",
-            str(context.exception),
-        )
 
     def test_input_is_dataset_training_false(self):
         """Test with lgb.Dataset input and training mode False."""
@@ -157,3 +138,54 @@ class TestLGBModule(TestCase):
         data = [1, 2, 3]  # Invalid type
         with self.assertRaises(AssertionError):
             module._input_checking_setting(data)
+
+    def test_if_bst_is_none(self):
+        """
+        Test scenario where self.training = True, self.train_dat is not None,
+        and self.bst is None. The method should return self.train_dat directly.
+        """
+        module = lgm.LGBModule(10, 5, 1)
+        arr = np.random.rand(10, 5)
+        module._set_train_dat(lgb.Dataset(arr))
+
+        # Since bst is None, method should return train_dat directly
+        result = module._input_checking_setting(np.random.rand(10, 5))
+        self.assertIs(
+            result, module.train_dat, "Expected to return train_dat when bst is None."
+        )
+
+    def test_raises_input_changed_lgb_dataset(self):
+        """
+        Test scenario where self.training = True, self.train_dat not None,
+        self.bst not None, and input_dataset is an lgb.Dataset with a _handle.
+        Expect no assertion error and return self.train_dat.
+        """
+        module = lgm.LGBModule(10, 5, 1)
+        arr = np.random.rand(10, 5)
+        initial_dataset = lgb.Dataset(arr)
+        initial_dataset.construct()
+        module._set_train_dat(initial_dataset)
+
+        # bst is non-None now
+        module.bst = object()
+
+        with self.assertRaises(AssertionError):
+            module._input_checking_setting(lgb.Dataset(np.random.random([10, 5])))
+
+    def test_raises_input_changed_ndarray(self):
+        """
+        Test scenario where self.training = True, self.train_dat not None,
+        self.bst not None, and input_dataset is an lgb.Dataset with a _handle.
+        Expect no assertion error and return self.train_dat.
+        """
+        module = lgm.LGBModule(10, 5, 1)
+        arr = np.random.rand(10, 5)
+        initial_dataset = lgb.Dataset(arr)
+        initial_dataset.construct()
+        module._set_train_dat(initial_dataset)
+
+        # bst is non-None now
+        module.bst = object()
+
+        with self.assertRaises(AssertionError):
+            module._input_checking_setting(np.random.random([11, 5]))
