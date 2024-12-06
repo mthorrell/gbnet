@@ -1,5 +1,4 @@
 from typing import Union
-import warnings
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
@@ -30,7 +29,6 @@ class LGBModule(nn.Module):
             )
         )
         self.train_dat = None
-        self.training_n = None
 
     def _set_train_dat(self, input_dataset: lgb.Dataset):
         if input_dataset.params is None:
@@ -39,13 +37,6 @@ class LGBModule(nn.Module):
             input_dataset.params.update({"verbose": -1})
         input_dataset.free_raw_data = False
         self.train_dat = input_dataset
-        self.train_dat.construct()
-
-    def _check_training_data(self):
-        if self.train_dat.get_weight() is not None:
-            warnings.warn(
-                "Weights will not work properly when defined as part of the input Dataset. Weights should be defined in the loss."
-            )
 
     def _input_checking_setting(
         self, input_dataset: Union[lgb.Dataset, np.ndarray, pd.DataFrame]
@@ -58,19 +49,6 @@ class LGBModule(nn.Module):
                     if isinstance(input_dataset, lgb.Dataset)
                     else lgb.Dataset(input_dataset)
                 )
-                self.training_n = self.train_dat.num_data()
-                self._check_training_data()
-            if isinstance(input_dataset, lgb.Dataset):
-                input_dataset.construct()
-
-            check_n = (
-                input_dataset.num_data()
-                if isinstance(input_dataset, lgb.Dataset)
-                else input_dataset.shape[0]
-            )
-            assert (
-                check_n == self.training_n
-            ), "Changing datasets while training is not currently supported. If trying to make predictions, set Module to eval mode via `Module.eval()`"
             return self.train_dat
 
         if isinstance(input_dataset, lgb.Dataset):

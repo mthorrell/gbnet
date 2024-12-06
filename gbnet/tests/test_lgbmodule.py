@@ -75,8 +75,6 @@ class TestLGBModule(TestCase):
         result = module._input_checking_setting(dataset)
         self.assertIs(result, module.train_dat)
         self.assertIsInstance(result, lgb.Dataset)
-        self.assertEqual(module.training_n, module.train_dat.num_data())
-        self.assertEqual(module.training_n, dataset.num_data())
 
     def test_input_is_ndarray_training_true_train_dat_none(self):
         """Test with np.ndarray input, training mode True, and train_dat is None."""
@@ -85,8 +83,6 @@ class TestLGBModule(TestCase):
         result = module._input_checking_setting(data)
         self.assertIs(result, module.train_dat)
         self.assertIsInstance(result, lgb.Dataset)
-        self.assertEqual(module.training_n, module.train_dat.num_data())
-        self.assertEqual(module.training_n, 100)
 
     def test_input_is_dataframe_training_true_train_dat_none(self):
         """Test with pd.DataFrame input, training mode True, and train_dat is None."""
@@ -95,8 +91,6 @@ class TestLGBModule(TestCase):
         result = module._input_checking_setting(data)
         self.assertIs(result, module.train_dat)
         self.assertIsInstance(result, lgb.Dataset)
-        self.assertEqual(module.training_n, module.train_dat.num_data())
-        self.assertEqual(module.training_n, 100)
 
     def test_input_is_dataset_training_true_train_dat_set_same_nrows(self):
         """Test with lgb.Dataset input, training mode True, train_dat set, same number of data."""
@@ -106,19 +100,6 @@ class TestLGBModule(TestCase):
         result = module._input_checking_setting(dataset)
         self.assertIs(result, module.train_dat)
         self.assertIs(result, dataset)
-
-    def test_input_is_dataset_training_true_train_dat_set_different_nrows(self):
-        """Test with lgb.Dataset input, training mode True, train_dat set, different number of data."""
-        module = lgm.LGBModule(100, 10, 1)
-        data1 = np.random.rand(100, 10)
-        module(data1)
-        data2 = np.random.rand(50, 10)
-        with self.assertRaises(AssertionError) as context:
-            module(data2)
-        self.assertIn(
-            "Changing datasets while training is not currently supported",
-            str(context.exception),
-        )
 
     def test_input_is_dataset_training_false(self):
         """Test with lgb.Dataset input and training mode False."""
