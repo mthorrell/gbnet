@@ -8,13 +8,7 @@ from torch import nn
 
 
 class XGBModule(nn.Module):
-    def __init__(
-        self,
-        batch_size,
-        input_dim,
-        output_dim,
-        params={},
-    ):
+    def __init__(self, batch_size, input_dim, output_dim, params={}, min_hess=0):
         super(XGBModule, self).__init__()
         self.batch_size = batch_size
         self.input_dim = input_dim
@@ -24,6 +18,7 @@ class XGBModule(nn.Module):
         self.params["objective"] = "reg:squarederror"
         self.params["base_score"] = 0
         self.n_completed_boost_rounds = 0
+        self.min_hess = min_hess
 
         init_matrix = np.zeros([batch_size, input_dim])
         self.bst = xgb.train(
@@ -101,20 +96,10 @@ class XGBModule(nn.Module):
         return preds
 
     def gb_step(self):
-        grad = self.FX.grad * self.batch_size
+        grad, hess = self._get_grad_hess_FX(self.FX)
+        self._gb_step_grad_hess(grad, hess)
 
-        # parameters are independent row by row, so we can
-        # at least calculate hessians column by column by
-        # considering the sum of the gradient columns
-        hesses = []
-        for i in range(self.output_dim):
-            hesses.append(
-                torch.autograd.grad(grad[:, i].sum(), self.FX, retain_graph=True)[0][
-                    :, i : (i + 1)
-                ]
-            )
-        hess = torch.cat(hesses, axis=1)
-
+    def _gb_step_grad_hess(self, grad, hess):
         obj = XGBObj(grad, hess)
         g, h = obj(np.zeros([self.batch_size, self.output_dim]), None)
 
@@ -132,6 +117,22 @@ class XGBModule(nn.Module):
                 h,
             )
         self.n_completed_boost_rounds = self.n_completed_boost_rounds + 1
+
+    def _get_grad_hess_FX(self, FX):
+        grad = FX.grad * self.batch_size
+
+        # parameters are independent row by row, so we can
+        # at least calculate hessians column by column by
+        # considering the sum of the gradient columns
+        hesses = []
+        for i in range(self.output_dim):
+            hesses.append(
+                torch.autograd.grad(grad[:, i].sum(), FX, retain_graph=True)[0][
+                    :, i : (i + 1)
+                ]
+            )
+        hess = torch.maximum(torch.cat(hesses, axis=1), torch.Tensor([self.min_hess]))
+        return grad, hess
 
 
 class XGBObj:

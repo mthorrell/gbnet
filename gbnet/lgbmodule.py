@@ -7,13 +7,7 @@ from torch import nn
 
 
 class LGBModule(nn.Module):
-    def __init__(
-        self,
-        batch_size,
-        input_dim,
-        output_dim,
-        params={},
-    ):
+    def __init__(self, batch_size, input_dim, output_dim, params={}, min_hess=0):
         super(LGBModule, self).__init__()
         self.batch_size = batch_size
         self.input_dim = input_dim
@@ -29,6 +23,7 @@ class LGBModule(nn.Module):
             )
         )
         self.train_dat = None
+        self.min_hess = min_hess
 
     def _set_train_dat(self, input_dataset: lgb.Dataset):
         if input_dataset.params is None:
@@ -120,7 +115,7 @@ class LGBModule(nn.Module):
                     :, i : (i + 1)
                 ]
             )
-        hess = torch.cat(hesses, axis=1)
+        hess = torch.maximum(torch.cat(hesses, axis=1), torch.Tensor([self.min_hess]))
 
         obj = LightGBObj(grad, hess)
         input_params = self.params.copy()
