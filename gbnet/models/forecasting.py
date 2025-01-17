@@ -3,16 +3,25 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import xgboost as xgb
-from gbnet import xgbmodule
 from scipy.linalg import lstsq
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.utils.validation import check_is_fitted
 
 
+def loadModule(module):
+    assert module in {'XGBModule', 'LGBModule'}
+    if module == 'XGBModule':
+        from gbnet import xgbmodule
+        return xgbmodule.XGBModule
+    if module == 'LGBModule':
+        from gbnet import lgbmodule
+        return lgbmodule.LGBModule
+
+
 class Forecast(BaseEstimator, RegressorMixin):
     """
     A forecasting model class that implements a trend + seasonality
-    model using gbnet.xgbmodule.XGBModule
+    model using either XGBModule or LGBModule (but defaulting to XGBModule).
 
     Parameters
     ----------
@@ -43,23 +52,24 @@ class Forecast(BaseEstimator, RegressorMixin):
 
     Notes
     -----
-    The model uses a linear trend + a periodic function via XGBModule. The
+    The model uses a linear trend + a periodic function via XGBModule or LGBModule. The
     loss function used is Mean Squared Error (MSE).
     """
 
-    def __init__(self, nrounds=500, params=None):
+    def __init__(self, nrounds=500, params=None, module_type='XGBModule'):
         if params is None:
             params = {}
         self.nrounds = nrounds
         self.params = params
         self.model_ = None
         self.losses_ = []
+        self.module_type = module_type
 
     def fit(self, X, y=None):
         df = X.copy()
         df["y"] = y
 
-        self.model_ = ForecastModule(df.shape[0], params=self.params)
+        self.model_ = ForecastModule(df.shape[0], params=self.params, module_type=self.module_type)
         self.model_.train()
         optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.01)
         mse = torch.nn.MSELoss()
@@ -84,12 +94,13 @@ class Forecast(BaseEstimator, RegressorMixin):
 
 
 class ForecastModule(torch.nn.Module):
-    def __init__(self, n, params=None):
+    def __init__(self, n, params=None, module_type='XGBModule'):
         super(ForecastModule, self).__init__()
         self.trend = torch.nn.Linear(1, 1)
         self.bn = nn.LazyBatchNorm1d()
 
-        self.periodic_fn = xgbmodule.XGBModule(
+        GBModule = loadModule(module_type)
+        self.periodic_fn = GBModule(
             batch_size=n,
             input_dim=6,  # year, month, day, hour, minute, weekday
             output_dim=1,
@@ -131,7 +142,6 @@ class ForecastModule(torch.nn.Module):
             self.initialize(df)
 
         X = np.array(df[["year", "month", "day", "hour", "minute", "weekday"]])
-        self.X = xgb.DMatrix(X)
 
         forecast = (
             ###### linear trend defined via torch.nn.Linear
@@ -140,8 +150,8 @@ class ForecastModule(torch.nn.Module):
                     torch.Tensor(np.array(pd.to_numeric(df["ds"]))).reshape([-1, 1])
                 )
             )
-            ###### datetime components plugged into gbnet.xgbmodule.XGBModule
-            + self.periodic_fn(self.X)
+            ###### datetime components plugged into GBModule
+            + self.periodic_fn(X)
         )
         return forecast
 
@@ -150,13 +160,14 @@ class ForecastModule(torch.nn.Module):
 
 
 class NSForecastModule(torch.nn.Module):
-    def __init__(self, n_features, xcols=None, params=None):
+    def __init__(self, n_features, xcols=None, params=None, module_type='XGBModule'):
         super(NSForecastModule, self).__init__()
         if params is None:
             params = {}
         if xcols is None:
             xcols = []
-        self.seasonality = xgbmodule.XGBModule(
+        GBModule = loadModule(module_type)
+        self.seasonality = GBModule(
             n_features, 10 + len(xcols), 1, params=params
         )
         self.xcols = xcols
@@ -207,8 +218,7 @@ class NSForecastModule(torch.nn.Module):
         )
         trend = torch.Tensor(df["year"].values).reshape([-1, 1])
 
-        self.minput = xgb.DMatrix(datetime_features)
-        output = self.trend(self.bn(trend)) + self.seasonality(self.minput)
+        output = self.trend(self.bn(trend)) + self.seasonality(datetime_features)
         return output
 
     def gb_step(self):
@@ -236,7 +246,7 @@ def recursive_split(df, column, depth):
 class NSForecast(BaseEstimator, RegressorMixin):
     """
     A forecasting model class that implements a trend + seasonality + minor non-stationarity
-    model using gbnet.xgbmodule.XGBModule
+    model using XGBModule or LGBModule
 
     Parameters
     ----------
@@ -271,11 +281,11 @@ class NSForecast(BaseEstimator, RegressorMixin):
 
     Notes
     -----
-    The model uses a linear trend + some basic features in XGBModule. The
+    The model uses a linear trend + some basic features in XGBModule or LGBModule. The
     loss function used is Mean Squared Error (MSE).
     """
 
-    def __init__(self, nrounds=3000, xcols=None, params=None):
+    def __init__(self, nrounds=3000, xcols=None, params=None, module_type='XGBModule'):
         if params is None:
             params = {}
         if xcols is None:
@@ -285,6 +295,7 @@ class NSForecast(BaseEstimator, RegressorMixin):
         self.params = params
         self.model_ = None
         self.losses_ = []
+        self.module_type = module_type
 
     def fit(self, X, y=None):
         df = X.copy()
@@ -292,7 +303,7 @@ class NSForecast(BaseEstimator, RegressorMixin):
         df = self._prepare_dataframe(df)
         df = recursive_split(df, "ds", 4)
         self.model_ = NSForecastModule(
-            df.shape[0], xcols=self.xcols, params=self.params
+            df.shape[0], xcols=self.xcols, params=self.params, module_type=self.module_type
         )
         self.model_.train()
         optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.1)
