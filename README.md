@@ -1,6 +1,18 @@
-# gbnet
+# GBNet
 
 Gradient boosting libraries integrated with Pytorch
+
+## Table of Contents
+
+1. [Install](#install)
+2. [Introduction](#introduction)
+3. [Pytorch Modules](#pytorch-modules)
+   - [Conceptually, how can Pytorch be used to fit XGBoost or LightGBM models?](#conceptually-how-can-pytorch-be-used-to-fit-xgboost-or-lightgbm-models)
+   - [Is training a `gbnet` model closer to training a neural network or to training a GBM?](#is-training-a-gbnet-model-closer-to-training-a-neural-network-or-to-training-a-gbm)
+   - [Basic training of a GBM for comparison to existing gradient boosting packages](#basic-training-of-a-gbm-for-comparison-to-existing-gradient-boosting-packages)
+   - [Training XGBoost and LightGBM together](#training-xgboost-and-lightgbm-together)
+4. [Models](#models)
+   - [Forecasting](#forecasting)
 
 ## Install
 
@@ -18,47 +30,6 @@ There are two main components of `gbnet`:
 - (2) `gbnet` provides specific example estimators that accomplish things that were not previously possible using only XGBoost or LightGBM.
   - You can find these estimators in `gbnet/models/`. Right now there is a forecasting model that in the settings we tested, beats the performance of Meta's Prophet algorithm (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison).
   - Other models with plans to be integrated are Ordinal Regression and Time-varying Survival analysis.
-
-## Models
-
-### Forecasting
-
-`gbnet.models.forecasting.Forecast` outperforms Meta's popular Prophet algorithm on basic benchmarks (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison). Starter comparison code:
-
-```python
-import pandas as pd
-from prophet import Prophet
-from sklearn.metrics import root_mean_squared_error
-
-from gbnet.models import forecasting
-
-## Load and split data
-url = "https://raw.githubusercontent.com/facebook/prophet/main/examples/example_yosemite_temps.csv"
-df = pd.read_csv(url)
-df['ds'] = pd.to_datetime(df['ds'])
-
-train = df[df['ds'] < df['ds'].median()].reset_index(drop=True).copy()
-test = df[df['ds'] >= df['ds'].median()].reset_index(drop=True).copy()
-
-## train and predict comparing out-of-the-box gbnet & prophet
-
-# gbnet
-gbnet_forecast_model = forecasting.Forecast()
-gbnet_forecast_model.fit(train, train['y'])
-test['gbnet_pred'] = gbnet_forecast_model.predict(test)
-
-# prophet
-prophet_model = Prophet()
-prophet_model.fit(train)
-test['prophet_pred'] = prophet_model.predict(test)['yhat']
-
-sel = test['y'].notnull()
-print(f"gbnet rmse: {root_mean_squared_error(test[sel]['y'], test[sel]['gbnet_pred'])}")
-print(f"prophet rmse: {root_mean_squared_error(test[sel]['y'], test[sel]['prophet_pred'])}")
-
-# gbnet rmse: 7.930621578059079
-# prophet rmse: 20.10509806878121
-```
 
 ## Pytorch Modules
 
@@ -215,4 +186,46 @@ t1 = time.time()
 print(t1 - t0)  # 5.821
 ```
 
-<img width="600" alt="image" src="https://github.com/mthorrell/gbmodule/assets/15166269/949c7000-7fc3-4600-8916-03cdf60eeeb8">
+<img width="500" alt="image" src="https://github.com/mthorrell/gbmodule/assets/15166269/949c7000-7fc3-4600-8916-03cdf60eeeb8">
+
+
+## Models
+
+### Forecasting
+
+`gbnet.models.forecasting.Forecast` outperforms Meta's popular Prophet algorithm on basic benchmarks (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison). Starter comparison code:
+
+```python
+import pandas as pd
+from prophet import Prophet
+from sklearn.metrics import root_mean_squared_error
+
+from gbnet.models import forecasting
+
+## Load and split data
+url = "https://raw.githubusercontent.com/facebook/prophet/main/examples/example_yosemite_temps.csv"
+df = pd.read_csv(url)
+df['ds'] = pd.to_datetime(df['ds'])
+
+train = df[df['ds'] < df['ds'].median()].reset_index(drop=True).copy()
+test = df[df['ds'] >= df['ds'].median()].reset_index(drop=True).copy()
+
+## train and predict comparing out-of-the-box gbnet & prophet
+
+# gbnet
+gbnet_forecast_model = forecasting.Forecast()
+gbnet_forecast_model.fit(train, train['y'])
+test['gbnet_pred'] = gbnet_forecast_model.predict(test)
+
+# prophet
+prophet_model = Prophet()
+prophet_model.fit(train)
+test['prophet_pred'] = prophet_model.predict(test)['yhat']
+
+sel = test['y'].notnull()
+print(f"gbnet rmse: {root_mean_squared_error(test[sel]['y'], test[sel]['gbnet_pred'])}")
+print(f"prophet rmse: {root_mean_squared_error(test[sel]['y'], test[sel]['prophet_pred'])}")
+
+# gbnet rmse: 7.930621578059079
+# prophet rmse: 20.10509806878121
+```
