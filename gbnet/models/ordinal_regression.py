@@ -18,7 +18,14 @@ def loadModule(module):
 
 
 class GBOrd(BaseEstimator, ClassifierMixin):
-    def __init__(self, nrounds=500, params=None, module_type="XGBModule"):
+    def __init__(
+        self,
+        num_classes,
+        nrounds=500,
+        params=None,
+        module_type="XGBModule",
+        min_hess=0.1,
+    ):
         if params is None:
             params = {}
         self.nrounds = nrounds
@@ -27,21 +34,29 @@ class GBOrd(BaseEstimator, ClassifierMixin):
         self.losses_ = []
         self.module_type = module_type
         self.Module = loadModule(module_type)
+        self.loss_fn = OrdinalLogisticLoss(num_classes=num_classes)
+        self.num_classes = num_classes
+        self.min_hess = min_hess
 
     def fit(self, X, y=None):
         targets = torch.Tensor(y.values).flatten()
-        num_classes = len(np.unique(y))
+        targets = targets.long()
+        targets = targets - torch.min(targets)
+        assert len(np.unique(y)) == self.num_classes
 
-        self.model_ = self.Module(X.shape[0], X.shape[1], 1, params=self.params)
+        self.model_ = self.Module(
+            X.shape[0], X.shape[1], 1, params=self.params, min_hess=self.min_hess
+        )
         self.model_.train()
 
-        optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.01)
-        loss_fn = OrdinalLogisticLoss(num_classes=num_classes)
+        optimizer = torch.optim.Adam(
+            list(self.model_.parameters()) + list(self.loss_fn.parameters()), lr=0.01
+        )
 
         for _ in range(self.nrounds):
             optimizer.zero_grad()
             preds = self.model_(X).flatten()
-            loss = loss_fn(preds, targets)
+            loss = self.loss_fn(preds, targets)
             loss.backward(create_graph=True)
             self.losses_.append(loss.detach().item())
             self.model_.gb_step()
