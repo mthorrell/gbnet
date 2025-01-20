@@ -65,7 +65,52 @@ class GBOrd(BaseEstimator, ClassifierMixin):
         self.model_.eval()
         return self
 
+    def score(self, X, y):
+        """
+        Return the negative log likelihood score for input X and targets y.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Input features.
+        y : array-like of shape (n_samples,)
+            Target values.
+
+        Returns
+        -------
+        float
+            Negative log likelihood score. Lower values indicate better fit.
+        """
+        check_is_fitted(self, "model_")
+        targets = torch.Tensor(y.values).flatten().long()
+        targets = targets - torch.min(targets)
+        logits = self.model_(X).flatten()
+        neg_log_likelihood = self.loss_fn(logits, targets)
+        return neg_log_likelihood.detach().item()
+
+    def predict_proba(self, X):
+        """
+        Predict class probabilities for input X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Input features.
+
+        Returns
+        -------
+        array-like of shape (n_samples, n_classes)
+            Predicted class probabilities.
+        """
+        check_is_fitted(self, "model_")
+        logits = self.model_(X).flatten()
+        probs = self.loss_fn.get_pred_probs(logits).detach().numpy()
+        return probs
+
     def predict(self, X):
+        """
+        Predict continuous output for input X.
+        """
         check_is_fitted(self, "model_")
         preds = self.model_(X).detach().numpy()
         return preds.flatten()
