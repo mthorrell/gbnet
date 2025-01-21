@@ -21,13 +21,18 @@ class GBOrd(BaseEstimator, ClassifierMixin):
     def __init__(
         self,
         num_classes,
-        nrounds=500,
+        nrounds=None,
         params=None,
         module_type="XGBModule",
-        min_hess=0.1,
+        min_hess=0.0,
     ):
         if params is None:
             params = {}
+        if nrounds is None:
+            if module_type == "XGBModule":
+                nrounds = 500
+            if module_type == "LGBModule":
+                nrounds = 1000
         self.nrounds = nrounds
         self.params = params
         self.model_ = None
@@ -39,9 +44,10 @@ class GBOrd(BaseEstimator, ClassifierMixin):
         self.min_hess = min_hess
 
     def fit(self, X, y=None):
+        self.min_targets = min(y)
         targets = torch.Tensor(y.values).flatten()
         targets = targets.long()
-        targets = targets - torch.min(targets)
+        targets = targets - self.min_targets
         assert len(np.unique(y)) == self.num_classes
 
         self.model_ = self.Module(
@@ -107,13 +113,17 @@ class GBOrd(BaseEstimator, ClassifierMixin):
         probs = self.loss_fn.get_pred_probs(logits).detach().numpy()
         return probs
 
-    def predict(self, X):
+    def predict(self, X, return_logits=True):
         """
         Predict continuous output for input X.
         """
         check_is_fitted(self, "model_")
-        preds = self.model_(X).detach().numpy()
-        return preds.flatten()
+        if return_logits:
+            preds = self.model_(X).detach().numpy()
+            return preds.flatten()
+        else:
+            preds = self.predict_proba(X).argmax(axis=1) + self.min_targets
+            return preds
 
 
 class OrdinalLogisticLoss(nn.Module):
