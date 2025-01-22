@@ -23,7 +23,7 @@ class GBOrd(BaseEstimator, ClassifierMixin):
         num_classes,
         nrounds=None,
         params=None,
-        module_type="XGBModule",
+        module_type="LGBModule",
         min_hess=0.0,
     ):
         if params is None:
