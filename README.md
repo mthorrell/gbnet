@@ -13,6 +13,7 @@ Gradient boosting libraries integrated with Pytorch
    - [Training XGBoost and LightGBM together](#training-xgboost-and-lightgbm-together)
 4. [Models](#models)
    - [Forecasting](#forecasting)
+   - [Ordinal Regression](#ordinal-regression)
 
 ## Install
 
@@ -228,4 +229,14 @@ print(f"prophet rmse: {root_mean_squared_error(test[sel]['y'], test[sel]['prophe
 
 # gbnet rmse: 7.930621578059079
 # prophet rmse: 20.10509806878121
+```
+
+### Ordinal Regression
+
+See [this notebook](https://github.com/mthorrell/gbnet/blob/main/examples/ordinal_regression_comparison.ipynb) for examples.
+
+```python
+from gbnet.models import ordinal_regression
+
+sklearn_estimator = ordinal_regression.GBOrd(num_classes=10)
 ```
