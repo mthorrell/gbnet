@@ -14,6 +14,7 @@ Gradient boosting libraries integrated with Pytorch
 4. [Models](#models)
    - [Forecasting](#forecasting)
    - [Ordinal Regression](#ordinal-regression)
+5. [Contributing](#contributing)
 
 ## Install
 
@@ -240,3 +241,22 @@ from gbnet.models import ordinal_regression
 
 sklearn_estimator = ordinal_regression.GBOrd(num_classes=10)
 ```
+
+## Contributing
+
+Contributions are welcome! Here are some ways you can help:
+
+- Report bugs and request features by opening issues
+- Submit pull requests with bug fixes or new features
+- Improve documentation and examples
+- Add tests to increase code coverage
+
+Before submitting a pull request:
+
+1. Fork the repository and create a new branch
+2. Add tests for any new functionality
+3. Ensure all tests pass by running `pytest`
+4. Update documentation as needed
+5. Follow the existing code style
+
+For major changes, please open an issue first to discuss what you would like to change.

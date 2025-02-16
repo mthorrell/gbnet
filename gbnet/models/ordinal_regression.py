@@ -18,6 +18,49 @@ def loadModule(module):
 
 
 class GBOrd(BaseEstimator, ClassifierMixin):
+    """Gradient Boosting Ordinal Regression model.
+
+    This model combines gradient boosting with ordinal regression to predict ordered
+    categorical outcomes. It uses either XGBoost or LightGBM as the underlying boosting
+    engine wrapped in a PyTorch module.
+
+    Parameters
+    ----------
+    num_classes : int
+        Number of ordinal classes to predict
+    nrounds : int, optional
+        Number of boosting rounds. Defaults to 500 for XGBModule and 1000 for LGBModule.
+    params : dict, optional
+        Additional parameters passed to the gradient boosting model.
+    module_type : str, optional
+        Type of gradient boosting module to use, either "XGBModule" or "LGBModule".
+        Defaults to "LGBModule".
+    min_hess : float, optional
+        Minimum hessian value for numerical stability. Defaults to 0.0.
+
+    Attributes
+    ----------
+    model_ : XGBModule or LGBModule
+        Trained gradient boosting module. Set after fitting.
+    losses_ : list
+        List of loss values recorded at each training iteration.
+    min_targets : int
+        Minimum value in training targets, used for label normalization.
+
+    Methods
+    -------
+    fit(X, y)
+        Trains the model using input features X and ordinal targets y.
+    predict(X)
+        Predicts ordinal class labels for input features X.
+
+    Notes
+    -----
+    The model uses an ordinal logistic loss function to handle ordered categorical outcomes.
+    The gradient boosting model learns a single score which is transformed into class
+    probabilities via learned thresholds.
+    """
+
     def __init__(
         self,
         num_classes,
