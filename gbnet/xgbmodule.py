@@ -8,6 +8,29 @@ from torch import nn
 
 
 class XGBModule(nn.Module):
+    """XGBoost Module that wraps XGBoost boosting into a PyTorch Module.
+
+    This module allows integration of XGBoost gradient boosting with PyTorch neural networks.
+    It maintains the boosting model state and handles both training and inference.
+
+    Args:
+        batch_size (int): Size of training data
+        input_dim (int): Dimension of input features
+        output_dim (int): Dimension of output predictions
+        params (dict, optional): Parameters passed to LightGBM. Defaults to {}.
+        min_hess (float, optional): Minimum hessian value submitted to LightGBM. Defaults to 0.
+
+    Attributes:
+        batch_size (int): Size of mini-batches
+        input_dim (int): Input feature dimension
+        output_dim (int): Output prediction dimension
+        params (dict): LightGBM parameters
+        bst (lightgbm.Booster): The underlying LightGBM booster
+        FX (torch.nn.Parameter): Current predictions tensor
+        train_dat (lightgbm.Dataset): Training dataset used for caching
+        min_hess (float): Minimum hessian threshold
+    """
+
     def __init__(self, batch_size, input_dim, output_dim, params={}, min_hess=0):
         super(XGBModule, self).__init__()
         self.batch_size = batch_size
@@ -74,7 +97,27 @@ class XGBModule(nn.Module):
             else xgb.DMatrix(input_data)
         )
 
-    def forward(self, input_data, return_tensor: bool = True):
+    def forward(
+        self,
+        input_data: Union[xgb.DMatrix, np.ndarray, pd.DataFrame],
+        return_tensor: bool = True,
+    ):
+        """Forward pass through the XGBoost module.
+
+        Args:
+            input_dataset (Union[xgb.DMatrix, np.ndarray, pd.DataFrame]): Input data for prediction.
+                Can be a XGBoost DMatrix, numpy array, or pandas DataFrame.
+            return_tensor (bool, optional): Whether to return predictions as a PyTorch tensor.
+                Defaults to True.
+
+        Returns:
+            Union[torch.Tensor, np.ndarray]: Model predictions. Returns a PyTorch tensor if
+            return_tensor=True, otherwise returns a numpy array.
+
+        The forward pass handles both train and eval
+        - In train mode, maintains state between iterations and updates internal FX tensor
+        - In eval mode, generates predictions on new data using the trained model
+        """
         input_data = self._input_checking_setting(input_data)
         preds = self.bst.predict(input_data)
 
@@ -96,6 +139,18 @@ class XGBModule(nn.Module):
         return preds
 
     def gb_step(self):
+        """Performs a gradient boosting step to update the model.
+
+        This method:
+        1. Computes gradients and hessians from the current predictions
+        3. Updates the internal boosting model
+
+        The gradients are scaled by batch size and hessians are clipped to a minimum value
+        to ensure numerical stability.
+
+        Returns:
+            None
+        """
         grad, hess = self._get_grad_hess_FX(self.FX)
         self._gb_step_grad_hess(grad, hess)
 
@@ -136,6 +191,8 @@ class XGBModule(nn.Module):
 
 
 class XGBObj:
+    """Helper class for use with XGBoost as a backend for XGBModule"""
+
     def __init__(self, grad, hess):
         self.grad = grad
         self.hess = hess
