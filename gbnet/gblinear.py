@@ -23,7 +23,7 @@ class GBLinear(nn.Module):
     def forward(self, x):
         self.input = x.detach().numpy()  # TODO add input checks
         self.FX = self.linear(x)
-        self.FX.retain_grad()  # Ensure FX's gradient is kept for gb_step
+        self.FX.retain_grad()
         return self.FX
 
     def _get_grad_hess_FX(self, FX):
