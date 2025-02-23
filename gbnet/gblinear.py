@@ -9,9 +9,34 @@ import torch.nn as nn
 
 
 class GBLinear(nn.Module):
+    """A linear gradient boosting module that uses gradient boosting for updates.
+
+    This module implements a linear layer that can be trained using gradient boosting.
+    It maintains state between iterations and updates parameters using computed gradients
+    and hessians.
+
+    Args:
+        input_dim (int): Input feature dimension
+        output_dim (int): Output prediction dimension
+        bias (bool, optional): Whether to include a bias term. Defaults to True.
+        lr (float, optional): Learning rate for parameter updates. Defaults to 0.1.
+        min_hess (float, optional): Minimum hessian threshold. Defaults to 0.0.
+        lambd (float, optional): L2 regularization parameter. Defaults to 0.01.
+
+    Attributes:
+        input_dim (int): Input feature dimension
+        output_dim (int): Output prediction dimension
+        min_hess (float): Minimum hessian threshold
+        bias (bool): Whether bias term is included
+        lr (float): Learning rate
+        lambd (float): L2 regularization parameter
+        linear (nn.Linear): The underlying linear layer
+        FX (torch.Tensor): Current predictions tensor
+        input (np.ndarray): Input data cache
+    """
+
     def __init__(
         self,
-        batch_size,
         input_dim,
         output_dim,
         bias=True,
@@ -20,7 +45,6 @@ class GBLinear(nn.Module):
         lambd=0.01,
     ):
         super(GBLinear, self).__init__()
-        self.batch_size = batch_size
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.min_hess = min_hess
@@ -54,7 +78,7 @@ class GBLinear(nn.Module):
         return self.FX
 
     def _get_grad_hess_FX(self, FX):
-        grad = FX.grad * self.batch_size
+        grad = FX.grad * self.input.shape[0]
 
         hesses = []
         for i in range(self.output_dim):
@@ -77,7 +101,9 @@ class GBLinear(nn.Module):
         """Uses stored gradients to update weights"""
         with torch.no_grad():
             if self.bias:
-                X = np.concatenate([np.ones([self.batch_size, 1]), self.input], axis=1)
+                X = np.concatenate(
+                    [np.ones([self.input.shape[0], 1]), self.input], axis=1
+                )
             else:
                 X = self.input
 
@@ -94,6 +120,22 @@ class GBLinear(nn.Module):
 
 
 def ridge_regression(X, y, lambd):
+    """Solves ridge regression using Cholesky decomposition.
+
+    Fastest method tested.
+
+    Args:
+        X (np.ndarray): Design matrix of shape (n_samples, n_features)
+        y (np.ndarray): Target values of shape (n_samples,)
+        lambd (float): Ridge regularization parameter
+
+    Returns:
+        np.ndarray: Fitted coefficients of shape (n_features,)
+
+    The function solves the ridge regression problem:
+    min_beta ||X beta - y||^2 + lambd ||beta||^2
+    using the normal equations and Cholesky decomposition for numerical stability.
+    """
     n, d = X.shape
     A = X.T @ X + lambd * np.eye(d)
     c = X.T @ y
