@@ -5,8 +5,10 @@ import pandas as pd
 import torch
 from torch import nn
 
+from gbnet.gbmodule import GBModule
 
-class LGBModule(nn.Module):
+
+class LGBModule(GBModule):
     """LightGBM Module that wraps LightGBM boosting into a PyTorch Module.
 
     This module allows integration of LightGBM gradient boosting with PyTorch neural networks.
@@ -47,6 +49,8 @@ class LGBModule(nn.Module):
         )
         self.train_dat = None
         self.min_hess = min_hess
+        self.grad = None
+        self.hess = None
 
     def _set_train_dat(self, input_dataset: lgb.Dataset):
         if input_dataset.params is None:
@@ -140,6 +144,9 @@ class LGBModule(nn.Module):
                 )
         return preds
 
+    def gb_calc(self):
+        self.grad, self.hess = self._get_grad_hess_FX()
+
     def gb_step(self):
         """Performs a gradient boosting step to update the model.
 
@@ -156,22 +163,10 @@ class LGBModule(nn.Module):
         Returns:
             None
         """
-        grad = self.FX.grad * self.batch_size
+        if self.grad is None and self.hess is None:
+            self.gb_calc()
 
-        # parameters are independent row by row, so we can
-        # at least calculate hessians column by column by
-        # considering the sum of the gradient columns
-        # TODO figure out how to get diagonals of hessians efficiently
-        hesses = []
-        for i in range(self.output_dim):
-            hesses.append(
-                torch.autograd.grad(grad[:, i].sum(), self.FX, retain_graph=True)[0][
-                    :, i : (i + 1)
-                ]
-            )
-        hess = torch.maximum(torch.cat(hesses, axis=1), torch.Tensor([self.min_hess]))
-
-        obj = LightGBObj(grad, hess)
+        obj = LightGBObj(self.grad, self.hess)
         input_params = self.params.copy()
         input_params.update(
             {
@@ -191,6 +186,8 @@ class LGBModule(nn.Module):
                 num_boost_round=1,
                 keep_training_booster=True,
             )
+        self.grad = None
+        self.hess = None
 
 
 class LightGBObj:

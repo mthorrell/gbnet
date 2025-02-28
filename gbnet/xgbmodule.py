@@ -6,8 +6,10 @@ import torch
 import xgboost as xgb
 from torch import nn
 
+from gbnet.gbmodule import GBModule
 
-class XGBModule(nn.Module):
+
+class XGBModule(GBModule):
     """XGBoost Module that wraps XGBoost boosting into a PyTorch Module.
 
     This module allows integration of XGBoost gradient boosting with PyTorch neural networks.
@@ -138,6 +140,9 @@ class XGBModule(nn.Module):
                 )
         return preds
 
+    def gb_calc(self):
+        self.grad, self.hess = self._get_grad_hess_FX()
+
     def gb_step(self):
         """Performs a gradient boosting step to update the model.
 
@@ -151,8 +156,12 @@ class XGBModule(nn.Module):
         Returns:
             None
         """
-        grad, hess = self._get_grad_hess_FX(self.FX)
-        self._gb_step_grad_hess(grad, hess)
+        if self.grad is None and self.hess is None:
+            self.gb_calc()
+
+        self._gb_step_grad_hess(self.grad, self.hess)
+        self.grad = None
+        self.hess = None
 
     def _gb_step_grad_hess(self, grad, hess):
         obj = XGBObj(grad, hess)
@@ -172,22 +181,6 @@ class XGBModule(nn.Module):
                 h,
             )
         self.n_completed_boost_rounds = self.n_completed_boost_rounds + 1
-
-    def _get_grad_hess_FX(self, FX):
-        grad = FX.grad * self.batch_size
-
-        # parameters are independent row by row, so we can
-        # at least calculate hessians column by column by
-        # considering the sum of the gradient columns
-        hesses = []
-        for i in range(self.output_dim):
-            hesses.append(
-                torch.autograd.grad(grad[:, i].sum(), FX, retain_graph=True)[0][
-                    :, i : (i + 1)
-                ]
-            )
-        hess = torch.maximum(torch.cat(hesses, axis=1), torch.Tensor([self.min_hess]))
-        return grad, hess
 
 
 class XGBObj:
