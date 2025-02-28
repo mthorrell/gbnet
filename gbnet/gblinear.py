@@ -7,8 +7,10 @@ from scipy.linalg import cho_solve, cho_factor
 import torch
 import torch.nn as nn
 
+from gbnet.gbmodule import GBModule
 
-class GBLinear(nn.Module):
+
+class GBLinear(GBModule):
     """A linear gradient boosting module that uses gradient boosting for updates.
 
     This module implements a linear layer that can be trained using gradient boosting.
@@ -55,6 +57,8 @@ class GBLinear(nn.Module):
         self.linear = nn.Linear(self.input_dim, self.output_dim, bias=self.bias)
         self.FX = None
         self.input = None
+        self.g = None
+        self.h = None
 
     def _input_checking_setting(self, x: Union[torch.Tensor, np.ndarray, pd.DataFrame]):
         assert isinstance(x, (torch.Tensor, np.ndarray, pd.DataFrame))
@@ -77,28 +81,18 @@ class GBLinear(nn.Module):
             self.FX.retain_grad()
         return self.FX
 
-    def _get_grad_hess_FX(self, FX):
-        grad = FX.grad * self.input.shape[0]
-
-        hesses = []
-        for i in range(self.output_dim):
-            hesses.append(
-                torch.autograd.grad(grad[:, i].sum(), FX, retain_graph=True)[0][
-                    :, i : (i + 1)
-                ]
-            )
-        hess = torch.maximum(torch.cat(hesses, axis=1), torch.Tensor([self.min_hess]))
-        return grad, hess
-
     def gb_calc(self):
         """Calculate gradients and stores in the object"""
         if self.FX is None or self.FX.grad is None:
             raise RuntimeError("Backward must be called before gb_step.")
 
-        self.g, self.h = self._get_grad_hess_FX(self.FX)
+        self.g, self.h = self._get_grad_hess_FX()
 
     def gb_step(self):
         """Uses stored gradients to update weights"""
+        if self.g is None and self.h is None:
+            self.gb_calc()
+
         with torch.no_grad():
             if self.bias:
                 X = np.concatenate(
