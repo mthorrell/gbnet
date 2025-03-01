@@ -6,10 +6,10 @@ import torch
 import xgboost as xgb
 from torch import nn
 
-from gbnet.gbmodule import GBModule
+from gbnet.base import BaseGBModule
 
 
-class XGBModule(GBModule):
+class XGBModule(BaseGBModule):
     """XGBoost Module that wraps XGBoost boosting into a PyTorch Module.
 
     This module allows integration of XGBoost gradient boosting with PyTorch neural networks.

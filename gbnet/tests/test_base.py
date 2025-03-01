@@ -1,14 +1,14 @@
 import numpy as np
 import torch
 from unittest import TestCase
-from gbnet.gbmodule import GBModule
+from gbnet.base import BaseGBModule
 
 
-class TestGBModule(TestCase):
+class TestBaseGBModule(TestCase):
     def test_get_grad_hess_FX(self):
         """Test gradient and hessian calculation"""
 
-        class DummyGBModule(GBModule):
+        class DummyGBModule(BaseGBModule):
             def _input_checking_setting(self, input_data):
                 pass
 
@@ -55,7 +55,7 @@ class TestGBModule(TestCase):
     def test_min_hess_clipping(self):
         """Test minimum hessian clipping"""
 
-        class DummyGBModule(GBModule):
+        class DummyGBModule(BaseGBModule):
             def _input_checking_setting(self, input_data):
                 pass
 

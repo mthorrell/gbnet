@@ -3,7 +3,7 @@ import torch
 from torch import nn
 
 
-class GBModule(nn.Module, abc.ABC):
+class BaseGBModule(nn.Module, abc.ABC):
     """Base class for gradient boosting modules.
 
     This abstract base class defines the common interface and functionality that all
@@ -14,7 +14,7 @@ class GBModule(nn.Module, abc.ABC):
     """
 
     def __init__(self, min_hess=0.0):
-        super(GBModule, self).__init__()
+        super(BaseGBModule, self).__init__()
         self.min_hess = 0.0
         self.grad = None
         self.hess = None

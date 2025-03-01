@@ -5,10 +5,10 @@ import pandas as pd
 import torch
 from torch import nn
 
-from gbnet.gbmodule import GBModule
+from gbnet.base import BaseGBModule
 
 
-class LGBModule(GBModule):
+class LGBModule(BaseGBModule):
     """LightGBM Module that wraps LightGBM boosting into a PyTorch Module.
 
     This module allows integration of LightGBM gradient boosting with PyTorch neural networks.

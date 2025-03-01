@@ -7,10 +7,10 @@ from scipy.linalg import cho_solve, cho_factor
 import torch
 import torch.nn as nn
 
-from gbnet.gbmodule import GBModule
+from gbnet.base import BaseGBModule
 
 
-class GBLinear(GBModule):
+class GBLinear(BaseGBModule):
     """A linear gradient boosting module that uses gradient boosting for updates.
 
     This module implements a linear layer that can be trained using gradient boosting.
