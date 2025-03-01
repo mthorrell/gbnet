@@ -111,6 +111,8 @@ class GBLinear(GBModule):
             if self.bias:
                 updated_bias_dir = updated_B[0:1, :].flatten()
                 self.linear.bias -= self.lr * torch.Tensor(updated_bias_dir)
+        self.g = None
+        self.h = None
 
 
 def ridge_regression(X, y, lambd):
