@@ -6,6 +6,8 @@ from scipy.linalg import lstsq
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.utils.validation import check_is_fitted
 
+from gbnet.gblinear import GBLinear
+
 
 def loadModule(module):
     assert module in {"XGBModule", "LGBModule"}
@@ -57,7 +59,9 @@ class Forecast(BaseEstimator, RegressorMixin):
     loss function used is Mean Squared Error (MSE).
     """
 
-    def __init__(self, nrounds=500, params=None, module_type="XGBModule"):
+    def __init__(
+        self, nrounds=500, params=None, module_type="XGBModule", trend_type="PyTorch"
+    ):
         if params is None:
             params = {}
         self.nrounds = nrounds
@@ -65,13 +69,17 @@ class Forecast(BaseEstimator, RegressorMixin):
         self.model_ = None
         self.losses_ = []
         self.module_type = module_type
+        self.trend_type = trend_type
 
     def fit(self, X, y=None):
         df = X.copy()
         df["y"] = y
 
         self.model_ = ForecastModule(
-            df.shape[0], params=self.params, module_type=self.module_type
+            df.shape[0],
+            params=self.params,
+            module_type=self.module_type,
+            trend_type=self.trend_type,
         )
         self.model_.train()
         optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.01)
@@ -84,7 +92,8 @@ class Forecast(BaseEstimator, RegressorMixin):
             loss.backward(create_graph=True)
             self.losses_.append(loss.detach().item())
             self.model_.gb_step()
-            optimizer.step()
+            if self.trend_type == "PyTorch":
+                optimizer.step()
 
         self.model_.eval()
         return self
@@ -132,10 +141,21 @@ class ForecastModule(torch.nn.Module):
         Forward pass combining trend and periodic components
     """
 
-    def __init__(self, n, params=None, module_type="XGBModule"):
+    def __init__(
+        self,
+        n,
+        params=None,
+        module_type="XGBModule",
+        trend_type="PyTorch",
+        gblinear_params={},
+    ):
         super(ForecastModule, self).__init__()
-        self.trend = torch.nn.Linear(1, 1)
-        self.bn = nn.LazyBatchNorm1d()
+        assert trend_type in {"PyTorch", "GBLinear"}
+        if trend_type == "PyTorch":
+            self.trend = torch.nn.Linear(1, 1)
+            self.bn = nn.LazyBatchNorm1d()
+        if trend_type == "GBLinear":
+            self.trend = GBLinear(1, 1, **gblinear_params)
 
         GBModule = loadModule(module_type)
         self.periodic_fn = GBModule(
@@ -146,7 +166,28 @@ class ForecastModule(torch.nn.Module):
         )
         self.initialized = False
 
+    def _gblinear_initialize(self, df):
+        X = df.copy()
+        X = (
+            X[X["numeric_dt"].notnull() & X["y"].notnull()]
+            .reset_index(drop=True)
+            .copy()
+        )
+
+        X["intercept"] = 1
+        ests = lstsq(X[["intercept", "numeric_dt"]], X[["y"]])[0]
+
+        with torch.no_grad():
+            self.trend.linear.weight.copy_(torch.Tensor(ests[1:, :]))
+            self.trend.linear.bias.copy_(torch.Tensor(ests[0]))
+
+        self.initialized = True
+
     def initialize(self, df):
+        if self.trend_type == "GBLinear":
+            self._gblinear_initialize(df)
+            return
+
         X = df.copy()
         X = (
             X[X["numeric_dt"].notnull() & X["y"].notnull()]
@@ -181,19 +222,25 @@ class ForecastModule(torch.nn.Module):
 
         X = np.array(df[["year", "month", "day", "hour", "minute", "weekday"]])
 
-        forecast = (
-            ###### linear trend defined via torch.nn.Linear
-            self.trend(
+        if self.trend_type == "PyTorch":
+            trend_component = self.trend(
                 self.bn(
                     torch.Tensor(np.array(pd.to_numeric(df["ds"]))).reshape([-1, 1])
                 )
             )
-            ###### datetime components plugged into GBModule
-            + self.periodic_fn(X)
-        )
+        if self.trend_type == "GBLinear":
+            trend_component = self.trend(
+                torch.Tensor(np.array(pd.to_numeric(df["ds"]))).reshape([-1, 1])
+            )
+
+        forecast = trend_component + self.periodic_fn(X)
+
         return forecast
 
     def gb_step(self):
+        if self.trend_type == "GBLinear":
+            self.trend.gb_step()
+
         self.periodic_fn.gb_step()
 
 
