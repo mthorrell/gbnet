@@ -42,7 +42,7 @@ class GBLinear(BaseGBModule):
         input_dim,
         output_dim,
         bias=True,
-        lr=0.1,
+        lr=0.5,
         min_hess=0.0,
         lambd=0.01,
     ):

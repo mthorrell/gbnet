@@ -11,7 +11,7 @@ def test_gblinear_init():
     assert model.input_dim == 5
     assert model.output_dim == 2
     assert model.bias
-    assert model.lr == 0.1
+    assert model.lr == 0.5
     assert model.min_hess == 0.0
     assert model.lambd == 0.01
     assert isinstance(model.linear, nn.Linear)
