@@ -60,7 +60,12 @@ class Forecast(BaseEstimator, RegressorMixin):
     """
 
     def __init__(
-        self, nrounds=500, params=None, module_type="XGBModule", trend_type="PyTorch"
+        self,
+        nrounds=500,
+        params=None,
+        module_type="XGBModule",
+        trend_type="PyTorch",
+        gblinear_params={},
     ):
         if params is None:
             params = {}
@@ -70,6 +75,7 @@ class Forecast(BaseEstimator, RegressorMixin):
         self.losses_ = []
         self.module_type = module_type
         self.trend_type = trend_type
+        self.gblinear_params = gblinear_params
 
     def fit(self, X, y=None):
         df = X.copy()
@@ -80,6 +86,7 @@ class Forecast(BaseEstimator, RegressorMixin):
             params=self.params,
             module_type=self.module_type,
             trend_type=self.trend_type,
+            gblinear_params=self.gblinear_params,
         )
         self.model_.train()
         optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.01)
@@ -165,6 +172,7 @@ class ForecastModule(torch.nn.Module):
             params=params,
         )
         self.initialized = False
+        self.trend_type = trend_type
 
     def _gblinear_initialize(self, df):
         X = df.copy()
