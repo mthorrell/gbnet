@@ -33,6 +33,14 @@ class Forecast(BaseEstimator, RegressorMixin):
         be fine usually.
     params : dict, optional
         Dictionary of additional parameters to be passed to the underlying forecast model.
+    module_type : str, default="XGBModule"
+        Type of gradient boosting module to use, either "XGBModule" or "LGBModule".
+    trend_type : str, default="PyTorch"
+        Type of trend component to use. Can be either "PyTorch" for a PyTorch linear layer
+        or "GBLinear" for a gradient boosting linear layer.
+    gblinear_params : dict, default={}
+        Parameters to pass to GBLinear if trend_type="GBLinear". Ignored if trend_type="PyTorch".
+        See gbnet.gblinear.GBLinear for available parameters.
 
     Attributes
     ----------
@@ -56,7 +64,8 @@ class Forecast(BaseEstimator, RegressorMixin):
     Notes
     -----
     The model uses a linear trend + a periodic function via XGBModule or LGBModule. The
-    loss function used is Mean Squared Error (MSE).
+    loss function used is Mean Squared Error (MSE). The trend component can use either
+    standard PyTorch optimization or gradient boosting updates via GBLinear.
     """
 
     def __init__(
@@ -116,8 +125,9 @@ class ForecastModule(torch.nn.Module):
     """PyTorch module for time series forecasting.
 
     This module combines a linear trend component with a periodic function learned through
-    gradient boosting to model time series data. The trend is modeled using a linear layer,
-    while the periodic patterns are captured by either XGBoost or LightGBM.
+    gradient boosting to model time series data. The trend is modeled using either a PyTorch
+    linear layer or GBLinear layer, while the periodic patterns are captured by either
+    XGBoost or LightGBM.
 
     Parameters
     ----------
@@ -128,17 +138,23 @@ class ForecastModule(torch.nn.Module):
     module_type : str, optional
         Type of gradient boosting module to use, either "XGBModule" or "LGBModule".
         Defaults to "XGBModule".
+    trend_type : str, optional
+        Type of trend model to use, either "PyTorch" or "GBLinear". Defaults to "PyTorch".
+    gblinear_params : dict, optional
+        Parameters passed to GBLinear trend model if trend_type="GBLinear". Defaults to {}.
 
     Attributes
     ----------
-    trend : torch.nn.Linear
-        Linear layer for modeling trend component
+    trend : Union[torch.nn.Linear, GBLinear]
+        Linear layer for modeling trend component, either PyTorch Linear or GBLinear
     bn : torch.nn.BatchNorm1d
-        Batch normalization layer
+        Batch normalization layer (only used with PyTorch trend)
     periodic_fn : XGBModule or LGBModule
         Gradient boosting module for modeling periodic patterns
     initialized : bool
         Whether the model has been initialized with initial trend estimates
+    trend_type : str
+        Type of trend model being used
 
     Methods
     -------
