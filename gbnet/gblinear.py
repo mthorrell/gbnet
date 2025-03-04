@@ -17,24 +17,45 @@ class GBLinear(BaseGBModule):
     It maintains state between iterations and updates parameters using computed gradients
     and hessians.
 
-    Args:
-        input_dim (int): Input feature dimension
-        output_dim (int): Output prediction dimension
-        bias (bool, optional): Whether to include a bias term. Defaults to True.
-        lr (float, optional): Learning rate for parameter updates. Defaults to 0.1.
-        min_hess (float, optional): Minimum hessian threshold. Defaults to 0.0.
-        lambd (float, optional): L2 regularization parameter. Defaults to 0.01.
+    Parameters
+    ----------
+    input_dim : int
+        Input feature dimension
+    output_dim : int
+        Output prediction dimension
+    bias : bool, optional
+        Whether to include a bias term. Defaults to True.
+    lr : float, optional
+        Learning rate for parameter updates. Defaults to 0.5.
+    min_hess : float, optional
+        Minimum hessian threshold. Defaults to 0.0.
+    lambd : float, optional
+        L2 regularization parameter. Defaults to 0.01.
 
-    Attributes:
-        input_dim (int): Input feature dimension
-        output_dim (int): Output prediction dimension
-        min_hess (float): Minimum hessian threshold
-        bias (bool): Whether bias term is included
-        lr (float): Learning rate
-        lambd (float): L2 regularization parameter
-        linear (nn.Linear): The underlying linear layer
-        FX (torch.Tensor): Current predictions tensor
-        input (np.ndarray): Input data cache
+    Attributes
+    ----------
+    input_dim : int
+        Input feature dimension
+    output_dim : int
+        Output prediction dimension
+    min_hess : float
+        Minimum hessian threshold
+    bias : bool
+        Whether bias term is included
+    lr : float
+        Learning rate
+    lambd : float
+        L2 regularization parameter
+    linear : nn.Linear
+        The underlying linear layer
+    FX : torch.Tensor
+        Current predictions tensor
+    input : numpy.ndarray
+        Input data cache
+    g : torch.Tensor
+        Gradient cache
+    h : torch.Tensor
+        Hessian cache
     """
 
     def __init__(
