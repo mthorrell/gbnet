@@ -4,7 +4,7 @@ Gradient boosting libraries integrated with Pytorch
 
 ## Table of Contents
 
-1. [Install](#install)
+1. [Install and Docs](#install-and-docs)
 2. [Introduction](#introduction)
 3. [Pytorch Modules](#pytorch-modules)
    - [Conceptually, how can Pytorch be used to fit XGBoost or LightGBM models?](#conceptually-how-can-pytorch-be-used-to-fit-xgboost-or-lightgbm-models)
@@ -16,9 +16,11 @@ Gradient boosting libraries integrated with Pytorch
    - [Ordinal Regression](#ordinal-regression)
 5. [Contributing](#contributing)
 
-## Install
+## Install and Docs
 
 `pip install gbnet`
+
+Docs: https://gbnet.readthedocs.io/
 
 ## Introduction
 
