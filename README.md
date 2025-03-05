@@ -26,18 +26,19 @@ Docs: https://gbnet.readthedocs.io/
 
 There are two main components of `gbnet`:
 
-- (1) `gbnet` provides the Pytorch Modules that allow fitting of XGBoost and/or LightGBM models using Pytorch's computational network and differentiation capabilities.
+- (1) `gbnet.xgbmodule`, `gbnet.lgbmodule` and `gbnet.gblinear` provide the Pytorch Modules that allow fitting of XGBoost, LightGBM and Boosted Linear models using Pytorch's computational network and differentiation capabilities.
 
   - For example, if $`F(X)`$ is the output of an XGBoost model, you can use Pytorch to define the loss function, $`L(y, F(X))`$. Pytorch handles the gradients of $`L`$ so, as a user, you only specify the loss function.
   - You can also fit two (or more) boosted models together with Pytorch-supported parametric components. For instance, a recommendation prediction might look like this: $`\sigma(F(user) \times G(item))`$ where both $`F`$ and $`G`$ are separate boosting models producing embeddings of users and items respectively. `gbnet` makes defining and fitting such a model almost as easy as using Pytorch itself.
 
-- (2) `gbnet` provides specific example estimators that accomplish things that were not previously possible using only XGBoost or LightGBM.
-  - You can find these estimators in `gbnet/models/`. Right now there is a forecasting model that in the settings we tested, beats the performance of Meta's Prophet algorithm (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison).
-  - Other models with plans to be integrated are Ordinal Regression and Time-varying Survival analysis.
+- (2) `gbnet.models` provides specific example estimators that accomplish things that were not previously possible using only XGBoost or LightGBM. Current models:
+  - `Forecast` is a forecasting model similar in execution to Metas' Prophet algorithm. In the settings we tested, `gbnet.models.forecasting.Forecast` beats the performance of Meta's Prophet algorithm (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison).
+  - `GBOrd` is Ordinal Regression using GBMs (both XGBoost and LightGBM supported). The complex loss function (with fitable parameters) is specified in PyTorch and put on top of either `XGBModule` or `LGBModule`.
+  - Other models with plans to be integrated are time-varying Survival analysis and more with NLP.
 
 ## Pytorch Modules
 
-There are currently just two Pytorch Modules: `lgbmodule.LGBModule` and `xgbmodule.XGBModule`. These create the interface between Pytorch and the LightGBM and XGBoost packages respectively.
+There are currently three Pytorch Modules in `gbnet`: `lgbmodule.LGBModule`, `xgbmodule.XGBModule` and `gblinear.GBLinear`. These create the interface between PyTorch and the boosting algorithms. LightGBM and XGBoost are wrapped in `LGBModule` and `XGBModule` respectively. `GBLinear` is a linear layer that is trained with boosting (rather than gradient descent) -- for some applications it trains much faster than gradient descent (see this [PR](https://github.com/mthorrell/gbnet/pull/60) for details).
 
 ### Conceptually, how can Pytorch be used to fit XGBoost or LightGBM models?
 
@@ -47,7 +48,7 @@ CatBoost is also supported but in an experimental capacity since the current gbn
 
 ### Is training a `gbnet` model closer to training a neural network or to training a GBM?
 
-It's closer to training a GBM. Currently, the biggest difference between training using `gbnet` vs basic `torch`, is that `gbnet`, like basic usage of `xgboost` and `lightgbm`, requires the entire dataset to be fed in. Cached predictions allow these packages to train quickly, and caching cannot happen if input batches change with each training/boosting round. Some additional info is provided in [#12](https://github.com/mthorrell/gbnet/issues/12).
+It's closer to training a GBM. Currently, the biggest difference between training using `gbnet` vs basic `torch`, is that `gbnet`, like basic usage of `xgboost` and `lightgbm`, requires the entire dataset to be fed in. Cached predictions allow these packages to train quickly, and caching cannot happen if input batches change with each training/boosting round. There are some ways around this but there is currently no native functionality in `gbnet` for true batch training. Additional info is provided in [#12](https://github.com/mthorrell/gbnet/issues/12).
 
 ### Basic training of a GBM for comparison to existing gradient boosting packages
 
