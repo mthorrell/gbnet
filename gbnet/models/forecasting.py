@@ -41,6 +41,10 @@ class Forecast(BaseEstimator, RegressorMixin):
     gblinear_params : dict, default={}
         Parameters to pass to GBLinear if trend_type="GBLinear". Ignored if trend_type="PyTorch".
         See gbnet.gblinear.GBLinear for available parameters.
+    n_changepoints : int, default=20
+        Number of potential changepoints for the piecewise linear trend.
+    changepoint_penalty : float, default=0.05
+        L1 regularization strength for changepoints. Higher values lead to fewer changepoints.
 
     Attributes
     ----------
@@ -63,7 +67,7 @@ class Forecast(BaseEstimator, RegressorMixin):
 
     Notes
     -----
-    The model uses a linear trend + a periodic function via XGBModule or LGBModule. The
+    The model uses a piecewise linear trend + a periodic function via XGBModule or LGBModule. The
     loss function used is Mean Squared Error (MSE). The trend component can use either
     standard PyTorch optimization or gradient boosting updates via GBLinear.
     """
@@ -75,6 +79,8 @@ class Forecast(BaseEstimator, RegressorMixin):
         module_type="XGBModule",
         trend_type="PyTorch",
         gblinear_params={},
+        n_changepoints=20,
+        changepoint_penalty=0.05,
     ):
         if params is None:
             params = {}
@@ -85,10 +91,16 @@ class Forecast(BaseEstimator, RegressorMixin):
         self.module_type = module_type
         self.trend_type = trend_type
         self.gblinear_params = gblinear_params
+        self.n_changepoints = n_changepoints
+        self.changepoint_penalty = changepoint_penalty
 
     def fit(self, X, y=None):
         df = X.copy()
         df["y"] = y
+
+        # Calculate changepoint locations
+        min_date = pd.to_numeric(df["ds"].min())
+        max_date = pd.to_numeric(df["ds"].max())
 
         self.model_ = ForecastModule(
             df.shape[0],
@@ -96,6 +108,8 @@ class Forecast(BaseEstimator, RegressorMixin):
             module_type=self.module_type,
             trend_type=self.trend_type,
             gblinear_params=self.gblinear_params,
+            n_changepoints=self.n_changepoints,
+            changepoint_range=(min_date, max_date),
         )
         self.model_.train()
         optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.01)
@@ -105,6 +119,18 @@ class Forecast(BaseEstimator, RegressorMixin):
             optimizer.zero_grad()
             preds = self.model_(df)
             loss = mse(preds.flatten(), torch.Tensor(df["y"].values).flatten())
+
+            # Add L1 penalty for changepoints
+            if self.trend_type == "PyTorch":
+                changepoint_penalty = self.changepoint_penalty * torch.norm(
+                    self.model_.trend_changepoints.weight, p=1
+                )
+            else:
+                changepoint_penalty = self.changepoint_penalty * torch.norm(
+                    self.model_.trend_changepoints.Linear.weight, p=1
+                )
+            loss += changepoint_penalty
+
             loss.backward(create_graph=True)
             self.losses_.append(loss.detach().item())
             self.model_.gb_step()
@@ -124,7 +150,7 @@ class Forecast(BaseEstimator, RegressorMixin):
 class ForecastModule(torch.nn.Module):
     """PyTorch module for time series forecasting.
 
-    This module combines a linear trend component with a periodic function learned through
+    This module combines a piecewise linear trend component with a periodic function learned through
     gradient boosting to model time series data. The trend is modeled using either a PyTorch
     linear layer or GBLinear layer, while the periodic patterns are captured by either
     XGBoost or LightGBM.
@@ -142,13 +168,23 @@ class ForecastModule(torch.nn.Module):
         Type of trend model to use, either "PyTorch" or "GBLinear". Defaults to "PyTorch".
     gblinear_params : dict, optional
         Parameters passed to GBLinear trend model if trend_type="GBLinear". Defaults to {}.
+    n_changepoints : int, optional
+        Number of potential changepoints for the piecewise linear trend. Defaults to 20.
+    changepoint_range : tuple, optional
+        Range of dates (as numeric values) where changepoints can occur. Defaults to None.
 
     Attributes
     ----------
     trend : Union[torch.nn.Linear, GBLinear]
-        Linear layer for modeling trend component, either PyTorch Linear or GBLinear
+        Linear layer for modeling base trend component
+    trend_changepoints : Union[torch.nn.Linear, GBLinear]
+        Linear layer for modeling changepoints in the trend
+    changepoint_locs : torch.Tensor
+        Locations of potential changepoints
     bn : torch.nn.BatchNorm1d
         Batch normalization layer (only used with PyTorch trend)
+    bn_changepoints : torch.nn.BatchNorm1d
+        Batch normalization layer for changepoint features (only used with PyTorch trend)
     periodic_fn : XGBModule or LGBModule
         Gradient boosting module for modeling periodic patterns
     initialized : bool
@@ -171,14 +207,32 @@ class ForecastModule(torch.nn.Module):
         module_type="XGBModule",
         trend_type="PyTorch",
         gblinear_params={},
+        n_changepoints=20,
+        changepoint_range=None,
     ):
         super(ForecastModule, self).__init__()
         assert trend_type in {"PyTorch", "GBLinear"}
+        self.n_changepoints = n_changepoints
+
+        # Create equally spaced changepoints
+        if changepoint_range is not None:
+            min_date, max_date = changepoint_range
+            self.changepoint_locs = torch.linspace(
+                min_date, max_date, n_changepoints + 2
+            )[1:-1]  # Exclude endpoints
+        else:
+            self.changepoint_locs = None
+
         if trend_type == "PyTorch":
             self.trend = torch.nn.Linear(1, 1)
+            self.trend_changepoints = torch.nn.Linear(n_changepoints, 1, bias=False)
             self.bn = nn.LazyBatchNorm1d()
+            self.bn_changepoints = nn.LazyBatchNorm1d()
         if trend_type == "GBLinear":
             self.trend = GBLinear(1, 1, **gblinear_params)
+            self.trend_changepoints = GBLinear(
+                n_changepoints, 1, bias=False, **gblinear_params
+            )
 
         GBModule = loadModule(module_type)
         self.periodic_fn = GBModule(
@@ -189,6 +243,31 @@ class ForecastModule(torch.nn.Module):
         )
         self.initialized = False
         self.trend_type = trend_type
+
+    def _get_changepoint_features(self, numeric_dt):
+        """
+        Compute changepoint features for the piecewise linear trend.
+
+        Parameters
+        ----------
+        numeric_dt : torch.Tensor
+            Numeric datetime values
+
+        Returns
+        -------
+        torch.Tensor
+            Changepoint features of shape [n_samples, n_changepoints]
+        """
+        if self.changepoint_locs is None:
+            return torch.zeros((numeric_dt.shape[0], self.n_changepoints))
+
+        # ReLU function for changepoints: max(0, t - changepoint_loc)
+        features = torch.maximum(
+            torch.zeros_like(numeric_dt.expand(-1, self.n_changepoints)),
+            numeric_dt.expand(-1, self.n_changepoints)
+            - self.changepoint_locs.unsqueeze(0),
+        )
+        return features
 
     def _gblinear_initialize(self, df):
         X = df.copy()
@@ -204,6 +283,8 @@ class ForecastModule(torch.nn.Module):
         with torch.no_grad():
             self.trend.linear.weight.copy_(torch.Tensor(ests[1:, :]))
             self.trend.linear.bias.copy_(torch.Tensor(ests[0]))
+            # Initialize changepoint weights to zero
+            self.trend_changepoints.linear.weight.zero_()
 
         self.initialized = True
 
@@ -228,6 +309,8 @@ class ForecastModule(torch.nn.Module):
         with torch.no_grad():
             self.trend.weight.copy_(torch.Tensor(ests[1:, :]))
             self.trend.bias.copy_(torch.Tensor(ests[0]))
+            # Initialize changepoint weights to zero
+            self.trend_changepoints.weight.zero_()
 
         self.initialized = True
 
@@ -245,16 +328,28 @@ class ForecastModule(torch.nn.Module):
             self.initialize(df)
 
         X = np.array(df[["year", "month", "day", "hour", "minute", "weekday"]])
+        numeric_dt = torch.Tensor(np.array(pd.to_numeric(df["ds"]))).reshape([-1, 1])
+
+        # Get changepoint features
+        changepoint_features = self._get_changepoint_features(numeric_dt)
 
         if self.trend_type == "PyTorch":
-            trend_component = self.trend(
-                self.bn(
-                    torch.Tensor(np.array(pd.to_numeric(df["ds"]))).reshape([-1, 1])
-                )
+            # Apply batch normalization to the datetime
+            normalized_dt = self.bn(numeric_dt)
+            # Base trend
+            trend_component = self.trend(normalized_dt)
+            # Apply batch normalization to changepoint features
+            normalized_changepoints = self.bn_changepoints(changepoint_features)
+            # Add changepoint effects
+            trend_component = trend_component + self.trend_changepoints(
+                normalized_changepoints
             )
         if self.trend_type == "GBLinear":
-            trend_component = self.trend(
-                torch.Tensor(np.array(pd.to_numeric(df["ds"]))).reshape([-1, 1])
+            # Base trend
+            trend_component = self.trend(numeric_dt)
+            # Add changepoint effects
+            trend_component = trend_component + self.trend_changepoints(
+                changepoint_features
             )
 
         forecast = trend_component + self.periodic_fn(X)
@@ -264,6 +359,7 @@ class ForecastModule(torch.nn.Module):
     def gb_step(self):
         if self.trend_type == "GBLinear":
             self.trend.gb_step()
+            self.trend_changepoints.gb_step()
 
         self.periodic_fn.gb_step()
 
