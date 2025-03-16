@@ -80,7 +80,8 @@ class Forecast(BaseEstimator, RegressorMixin):
         trend_type="PyTorch",
         gblinear_params={},
         n_changepoints=20,
-        changepoint_penalty=0.05,
+        changepoint_penalty=0.0,
+        pytorch_lr=0.01,
     ):
         if params is None:
             params = {}
@@ -93,14 +94,15 @@ class Forecast(BaseEstimator, RegressorMixin):
         self.gblinear_params = gblinear_params
         self.n_changepoints = n_changepoints
         self.changepoint_penalty = changepoint_penalty
+        self.pytorch_lr = pytorch_lr
 
     def fit(self, X, y=None):
         df = X.copy()
         df["y"] = y
 
         # Calculate changepoint locations
-        min_date = pd.to_numeric(df["ds"].min())
-        max_date = pd.to_numeric(df["ds"].max())
+        min_date = pd.to_numeric(df["ds"]).min()
+        max_date = pd.to_numeric(df["ds"]).max()
 
         self.model_ = ForecastModule(
             df.shape[0],
@@ -110,9 +112,10 @@ class Forecast(BaseEstimator, RegressorMixin):
             gblinear_params=self.gblinear_params,
             n_changepoints=self.n_changepoints,
             changepoint_range=(min_date, max_date),
+            alpha=self.changepoint_penalty,
         )
         self.model_.train()
-        optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.01)
+        optimizer = torch.optim.Adam(self.model_.parameters(), lr=self.pytorch_lr)
         mse = torch.nn.MSELoss()
 
         for _ in range(self.nrounds):
@@ -127,9 +130,10 @@ class Forecast(BaseEstimator, RegressorMixin):
                 )
             else:
                 changepoint_penalty = self.changepoint_penalty * torch.norm(
-                    self.model_.trend_changepoints.Linear.weight, p=1
+                    self.model_.trend_changepoints.linear.weight, p=1
                 )
-            loss += changepoint_penalty
+
+            loss = loss + changepoint_penalty
 
             loss.backward(create_graph=True)
             self.losses_.append(loss.detach().item())
@@ -145,6 +149,12 @@ class Forecast(BaseEstimator, RegressorMixin):
         df = X.copy()
         preds = self.model_(df).detach().numpy()
         return preds.flatten()
+
+    def predict_components(self, X):
+        check_is_fitted(self, "model_")
+        df = X.copy()
+        preds = self.model_(df, components=True)
+        return preds
 
 
 class ForecastModule(torch.nn.Module):
@@ -209,6 +219,7 @@ class ForecastModule(torch.nn.Module):
         gblinear_params={},
         n_changepoints=20,
         changepoint_range=None,
+        alpha=0.0,
     ):
         super(ForecastModule, self).__init__()
         assert trend_type in {"PyTorch", "GBLinear"}
@@ -243,6 +254,7 @@ class ForecastModule(torch.nn.Module):
         )
         self.initialized = False
         self.trend_type = trend_type
+        self.alpha = alpha
 
     def _get_changepoint_features(self, numeric_dt):
         """
@@ -314,7 +326,7 @@ class ForecastModule(torch.nn.Module):
 
         self.initialized = True
 
-    def forward(self, df):
+    def forward(self, df, components=False):
         df = df.copy()
         # Assume df formatted like prophet (columns 'ds' and 'y')
         df["year"] = df["ds"].dt.year
@@ -352,6 +364,9 @@ class ForecastModule(torch.nn.Module):
                 changepoint_features
             )
 
+        if components:
+            return trend_component, self.periodic_fn(X)
+
         forecast = trend_component + self.periodic_fn(X)
 
         return forecast
@@ -361,7 +376,34 @@ class ForecastModule(torch.nn.Module):
             self.trend.gb_step()
             self.trend_changepoints.gb_step()
 
+            self.soft_threshold(
+                self.trend_changepoints.linear.weight,
+                self.alpha * self.trend_changepoints.lr,
+            )
+
         self.periodic_fn.gb_step()
+
+    def soft_threshold(self, beta, threshold):
+        """
+        Apply soft thresholding operation.
+
+        Args:
+            beta: The coefficient tensor
+            threshold: The threshold value (λη)
+
+        Returns:
+            Thresholded coefficients
+        """
+        with torch.no_grad():
+            positive_mask = beta > threshold
+            negative_mask = beta < -threshold
+
+            result = torch.zeros_like(beta)
+            result[positive_mask] = beta[positive_mask] - threshold
+            result[negative_mask] = beta[negative_mask] + threshold
+
+            beta.data = result
+            # return result
 
 
 class NSForecast(BaseEstimator, RegressorMixin):

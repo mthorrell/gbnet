@@ -126,7 +126,7 @@ class GBLinear(BaseGBModule):
                 X, (self.g / self.h).detach().numpy(), self.lambd
             )
 
-            updated_weight_dir = updated_B[1:, :].T
+            updated_weight_dir = updated_B[1:, :].T if self.bias else updated_B.T
             self.linear.weight -= self.lr * torch.Tensor(updated_weight_dir)
 
             if self.bias:
