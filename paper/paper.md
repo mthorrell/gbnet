@@ -9,7 +9,6 @@ tags:
 authors:
   - name: Michael Horrell
     orcid: 0009-0001-3091-0342
-    equal-contrib: true
     affiliation: 1
 affiliations:
  - name: Independent Researcher, USA
