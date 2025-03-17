@@ -57,6 +57,8 @@ The new parts of this code (mainly in comparison to PyTorch code) are `XGBModule
 
 As seen in this example, once an instance of `XGBModule` has been defined, it can be combined with any other model logic supported by PyTorch. This straightforward example demonstrates GBNet’s ease-of-use in defining complex models.
 
+As of this writing, there do not appear to be any alternatives that directly integrate XGBoost and LightGBM with an easy-to-use auto-differentiation framework like PyTorch. There are related projects that attempt to combine aspects of trees and neural networks, such as Deep Neural Decision Forests (DNDF), DeepGBM, or NODE; however, these typically involve complex neural network structures or stacking methods. GBNet provides a simpler, direct integration. GBNet bridges the simplicity and performance of gradient boosting with the flexibility of neural network modeling.
+
 ## Research Applications
 
 Several research areas stand to benefit from GBNet. GBNet itself contains a forecasting application (`gbnet.models.forecasting`) that has improved performance over Meta's Prophet algorithm on a set of benchmarks seen in the notebook linked [here](https://github.com/mthorrell/gbnet/blob/main/examples/simple_forecast_example.ipynb). The package also provides an ordinal regression implementation (`gbnet.models.ordinal_regression`) featuring the ordinal loss which itself is complex, has fittable parameters and is not included in either XGBoost or LightGBM. A notebook [here](https://github.com/mthorrell/gbnet/blob/main/examples/ordinal_regression_comparison.ipynb) demonstrates the ordinal regression application.
@@ -65,31 +67,12 @@ More broadly, GBNet may benefit any researcher looking to leverage non-parametri
 
 Research into network architectures specifically tailored for GBMs may also hold intrinsic value. Several classic architectures previously explored exclusively with pure neural network methods are now accessible for GBMs through GBNet. Important concepts and methods such as embeddings, autoencoders, variational methods, and contrastive learning may exhibit novel and interesting properties when integrated with GBMs.
 
-# Software Description and Alternatives
+# Software Description
 
 GBNet comprises two primary submodules:
 
 - `gbnet.xgbmodule`, `gbnet.lgbmodule`, `gbnet.gblinear`: Contain PyTorch Module classes (`XGBModule`, `LGBModule` and `GBLinear`) that integrate XGBoost, LightGBM and a linear booster respectively.
-- `gbnet.models`: Includes practical implementations such as forecasting and ordinal regression models built using these modules.
-
-As of this writing, there do not appear to be any alternatives that directly integrate XGBoost and LightGBM with an easy-to-use auto-differentiation framework like PyTorch. There are related projects that attempt to combine aspects of trees and neural networks, such as Deep Neural Decision Forests (DNDF), DeepGBM, or NODE; however, these typically involve complex neural network structures or stacking methods. GBNet provides a simpler, direct integration. GBNet bridges the simplicity and performance of gradient boosting with the flexibility of neural network modeling.
-
-# Research Applications
-
-GBNet significantly simplifies research and experimentation by allowing gradient boosting to be combined with neural network components. Researchers frequently face complex modeling scenarios where simple linear or purely neural-network approaches fall short. For example, forecasting tasks often involve linear trends combined with seasonal patterns or other non-linear phenomena. GBNet allows easy definition of such hybrid models, significantly simplifying experimentation and accelerating research.
-
-The practical benefits of GBNet are demonstrated through:
-
-- **Forecasting Applications**: GBNet outperforms standard forecasting methods like Prophet across various datasets. This advantage comes from the ease of combining linear trends and complex seasonal effects directly in one coherent model.
-- **Ordinal Regression**: GBNet facilitates ordinal regression modeling, which is challenging or impossible in standard gradient boosting frameworks due to the complexity of gradient computations involving threshold parameters.
-- **Embedding Tasks**: GBNet supports embedding methods like contrastive learning and Word2Vec-style embeddings directly through gradient boosting, opening new research opportunities in representation learning.
-
-## Representative Applications and Research Impact
-
-GBNet has already demonstrated competitive forecasting performance on public benchmark datasets, consistently outperforming Prophet across a range of applications (e.g., pedestrian activity, retail sales, air passengers, temperature prediction). It has also shown versatility by enabling complex ordinal regression modeling, outperforming standard approaches across multiple datasets.
-
-Furthermore, GBNet makes advanced embedding and contrastive learning techniques accessible through gradient boosting, enabling experimentation previously reserved for neural networks. Such capabilities are poised to support new research in areas requiring robust representation learning and hybrid predictive models.
-
+- `gbnet.models`: Includes practical implementations of models using either `XGBModule` or `LGBModule`. Currently there are two implementations. `gbnet.models.forecasting` provides a Sci-kit Learn interface for an optimized version of Forecast $(t)$ seen above.  `gbnet.models.ordinal_regression` provides a Sci-kit Learn interface for Ordinal Regression.
 
 
 # Acknowledgements
