@@ -25,7 +25,7 @@ bibliography: paper.bib
 
 # Summary
 
-GBNet is a Python software package integrating the powerful Gradient Boosting Machines (GBMs) packages XGBoost and LightGBM with PyTorch, a widely-used deep learning library. Gradient boosting is a popular machine learning technique known for accuracy in predictive modeling. XGBoost and LightGBM are industry standard implementations of GBMs recognized for their speed and strong performance across numerous applications. However, these libraries primarily handle standard machine learning tasks and are more difficult to use when faced with complex or non-standard modeling scenarios. For example, using non-standard loss functions with either XGBoost or LightGBM requires the user to manually compute gradients and hessians, a prohibitively difficult requirement for even moderately complex losses.
+GBNet is a Python software package integrating the powerful Gradient Boosting Machines (GBMs) [@friedman2001gbm] packages XGBoost [@chen2016xgboost] and LightGBM [@ke2017lightgbm] with PyTorch [@paszke2019pytorch], a widely-used deep learning library. Gradient boosting is a popular machine learning technique known for accuracy in predictive modeling. XGBoost and LightGBM are industry standard implementations of GBMs recognized for their speed and strong performance across numerous applications [@kaggle2021survey]. However, these libraries primarily handle standard machine learning tasks and are more difficult to use when faced with complex or non-standard modeling scenarios. For example, using non-standard loss functions with either XGBoost or LightGBM requires the user to manually compute gradients and hessians, a prohibitively difficult requirement for even moderately complex losses.
 
 PyTorch is popular for its ease of defining and training neural networks. Its computational graph offers automatic differentiation capabilities. GBNet leverages these capabilities acting as the go-between that links gradients/hessian calculations from PyTorch to XGBoost or LightGBM models. This integration allows users to easily construct and train complex hybrid models that combine gradient boosting with neural network architectures. GBNet significantly broadens the scope of problems that can be solved with the world leading gradient boosting software packages.
 
@@ -57,22 +57,22 @@ The new parts of this code (mainly in comparison to PyTorch code) are `XGBModule
 
 As seen in this example, once an instance of `XGBModule` has been defined, it can be combined with any other model logic supported by PyTorch. This straightforward example demonstrates GBNet’s ease-of-use in defining complex models.
 
-As of this writing, there do not appear to be any alternatives that directly integrate XGBoost and LightGBM with an easy-to-use auto-differentiation framework like PyTorch. There are related projects that attempt to combine aspects of trees and neural networks, such as Deep Neural Decision Forests (DNDF), DeepGBM, or NODE; however, these typically involve complex neural network structures or stacking methods. GBNet provides a simpler, direct integration. GBNet bridges the simplicity and performance of gradient boosting with the flexibility of neural network modeling.
+GBNet is the first software package to combine state-of-the-art gradient boosting software with neural network packages in a near-seamless and general way. Other packages either solve similar problems by providing Gradient Boosting packages with slightly more complex capabilities (@DBLP:journals/corr/abs-2007-09855, @ordinalgbt) or, simply as a method to combine GBMs and Neural Networks, resort to different types of stacking or other more complex combinations (@dndf, @deepgbm, @ndt, @node). GBNet allows users of the world's best gradient boosting packages to explore many of the rich architectural possibilities available through PyTorch.
 
 ## Research Applications
 
-Several research areas stand to benefit from GBNet. GBNet itself contains a forecasting application (`gbnet.models.forecasting`) that has improved performance over Meta's Prophet algorithm on a set of benchmarks seen in the notebook linked [here](https://github.com/mthorrell/gbnet/blob/main/examples/simple_forecast_example.ipynb). The package also provides an ordinal regression implementation (`gbnet.models.ordinal_regression`) featuring the ordinal loss which itself is complex, has fittable parameters and is not included in either XGBoost or LightGBM. A notebook [here](https://github.com/mthorrell/gbnet/blob/main/examples/ordinal_regression_comparison.ipynb) demonstrates the ordinal regression application.
+Several research areas stand to benefit from GBNet. GBNet itself contains a forecasting application (`gbnet.models.forecasting`) that has improved performance over Meta's Prophet algorithm [@taylor2018prophet] on a set of benchmarks seen in the notebook linked [here](https://github.com/mthorrell/gbnet/blob/main/examples/simple_forecast_example.ipynb). The package also provides an ordinal regression implementation (`gbnet.models.ordinal_regression`) featuring the ordinal loss which itself is complex, has fittable parameters and is not included in either XGBoost or LightGBM. A notebook [here](https://github.com/mthorrell/gbnet/blob/main/examples/ordinal_regression_comparison.ipynb) demonstrates the ordinal regression application.
 
 More broadly, GBNet may benefit any researcher looking to leverage non-parametric methods while still retaining structural control over their model. In particular, researchers using PyTorch mainly for its ability to produce outputs suited for their application may prefer GBNet at times because XGBoost and LightGBM themselves are incredibly robust. Neural networks can be finicky, requiring many small adjustments and normalizations, while GBMs often just work.
 
-Research into network architectures specifically tailored for GBMs may also hold intrinsic value. Several classic architectures previously explored exclusively with pure neural network methods are now accessible for GBMs through GBNet. Important concepts and methods such as embeddings, autoencoders, variational methods, and contrastive learning may exhibit novel and interesting properties when integrated with GBMs.
+Research into network architectures specifically tailored for GBMs may also hold intrinsic value. Several classic architectures previously explored exclusively with pure neural network methods are now accessible for GBMs through GBNet. Important concepts and methods such as embeddings [@mikolov2013distributed], autoencoders [@hinton1993autoencoders], variational methods [@kingma2013auto], and contrastive learning [@hadsell2006dimensionality] may exhibit novel and interesting properties when integrated with GBMs.
 
 # Software Description and Examples
 
 GBNet comprises two primary submodules:
 
 - `gbnet.xgbmodule`, `gbnet.lgbmodule`, `gbnet.gblinear`: Contain PyTorch Module classes (`XGBModule`, `LGBModule` and `GBLinear`) that integrate XGBoost, LightGBM and a linear booster respectively.
-- `gbnet.models`: Includes practical implementations of models using either `XGBModule` or `LGBModule`. Currently there are two implementations. `gbnet.models.forecasting` provides a Sci-kit Learn interface for an optimized version of Forecast $(t)$ seen above.  `gbnet.models.ordinal_regression` provides a Sci-kit Learn interface for Ordinal Regression.
+- `gbnet.models`: Includes practical implementations of models using either `XGBModule` or `LGBModule`. Currently there are two implementations. `gbnet.models.forecasting` provides a Sci-kit Learn interface [@scikit-learn] for an optimized version of Forecast $(t)$ seen above.  `gbnet.models.ordinal_regression` provides a Sci-kit Learn interface for Ordinal Regression.
 
 ## Forecasting Example
 
@@ -94,9 +94,11 @@ Code for these results is [here](https://github.com/mthorrell/gbnet/blob/main/ex
 
 ## Ordinal Regression Example
 
-Ordinal regression requires fitting a cumulative logit model with breakpoints `[@mccullagh1980regression]`
+Ordinal regression requires fitting a cumulative logit model with breakpoints [@mccullagh1980regression]. The breakpoints are a set of parameters that, loosely speaking, separate the different ordinal classes. A plot showing the fitted probabilities on the Ailerons dataset from @gagolewski_ordinal_regression is below. Because the breakpoints were initialized to be evenly spaced, the different spacing seen in the figure illusrtates that `gbnet.models.ordinal_regression.GBOrd` fit the breakpoint parameters along with the underlying GBM.
 
 <img src="ordinal_probs.png" alt="Fitted Ordinal Probabilities" style="width:50%;"/>
+
+Comparison of `gbnet.models.ordinal_regression.GBOrd` to alternatives across several datasets is linked [here](https://github.com/mthorrell/gbnet/blob/main/examples/ordinal_regression_comparison.ipynb).
 
 # Acknowledgements
 
