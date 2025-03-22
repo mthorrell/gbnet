@@ -112,7 +112,7 @@ class Forecast(BaseEstimator, RegressorMixin):
             gblinear_params=self.gblinear_params,
             n_changepoints=self.n_changepoints,
             changepoint_range=(min_date, max_date),
-            alpha=self.changepoint_penalty,
+            changepoint_penalty=self.changepoint_penalty,
         )
         self.model_.train()
         optimizer = torch.optim.Adam(self.model_.parameters(), lr=self.pytorch_lr)
@@ -130,7 +130,7 @@ class Forecast(BaseEstimator, RegressorMixin):
                 )
             else:
                 changepoint_penalty = self.changepoint_penalty * torch.norm(
-                    self.model_.trend_changepoints.linear.weight, p=1
+                    self.model_.trend_changepoints.coefs.linear.weight, p=1
                 )
 
             loss = loss + changepoint_penalty
@@ -155,6 +155,21 @@ class Forecast(BaseEstimator, RegressorMixin):
         df = X.copy()
         preds = self.model_(df, components=True)
         return preds
+
+
+class LassoCoefs(torch.nn.Module):
+    def __init__(self, n_features, lr=0.5, lambd=1.0, min_hess=0):
+        super(LassoCoefs, self).__init__()
+        self.coefs = GBLinear(
+            1, n_features, bias=False, lr=lr, lambd=lambd, min_hess=min_hess
+        )
+
+    def forward(self, x):
+        beta = self.coefs(np.array([[1]]))
+        return torch.matmul(x, beta.T), beta.T
+
+    def gb_step(self):
+        self.coefs.gb_step()
 
 
 class ForecastModule(torch.nn.Module):
@@ -219,7 +234,7 @@ class ForecastModule(torch.nn.Module):
         gblinear_params={},
         n_changepoints=20,
         changepoint_range=None,
-        alpha=0.0,
+        changepoint_penalty=0.1,
     ):
         super(ForecastModule, self).__init__()
         assert trend_type in {"PyTorch", "GBLinear"}
@@ -241,9 +256,17 @@ class ForecastModule(torch.nn.Module):
             self.bn_changepoints = nn.LazyBatchNorm1d()
         if trend_type == "GBLinear":
             self.trend = GBLinear(1, 1, **gblinear_params)
-            self.trend_changepoints = GBLinear(
-                n_changepoints, 1, bias=False, **gblinear_params
+
+            cp_params = gblinear_params.copy()
+            cp_params["lambd"] = (
+                max(changepoint_penalty, 1.0)
+                if "lambd" not in gblinear_params
+                else max(changepoint_penalty, gblinear_params["lr"])
             )
+            cp_params["lr"] = (
+                0.25 if "lr" not in gblinear_params else gblinear_params["lr"] / 2
+            )
+            self.trend_changepoints = LassoCoefs(n_changepoints, **cp_params)
 
         GBModule = loadModule(module_type)
         self.periodic_fn = GBModule(
@@ -254,7 +277,6 @@ class ForecastModule(torch.nn.Module):
         )
         self.initialized = False
         self.trend_type = trend_type
-        self.alpha = alpha
 
     def _get_changepoint_features(self, numeric_dt):
         """
@@ -296,7 +318,7 @@ class ForecastModule(torch.nn.Module):
             self.trend.linear.weight.copy_(torch.Tensor(ests[1:, :]))
             self.trend.linear.bias.copy_(torch.Tensor(ests[0]))
             # Initialize changepoint weights to zero
-            self.trend_changepoints.linear.weight.zero_()
+            self.trend_changepoints.coefs.linear.weight.zero_()
 
         self.initialized = True
 
@@ -359,10 +381,9 @@ class ForecastModule(torch.nn.Module):
         if self.trend_type == "GBLinear":
             # Base trend
             trend_component = self.trend(numeric_dt)
+            changepoints, beta = self.trend_changepoints(changepoint_features)
             # Add changepoint effects
-            trend_component = trend_component + self.trend_changepoints(
-                changepoint_features
-            )
+            trend_component = trend_component + changepoints
 
         if components:
             return trend_component, self.periodic_fn(X)
@@ -376,34 +397,7 @@ class ForecastModule(torch.nn.Module):
             self.trend.gb_step()
             self.trend_changepoints.gb_step()
 
-            self.soft_threshold(
-                self.trend_changepoints.linear.weight,
-                self.alpha * self.trend_changepoints.lr,
-            )
-
         self.periodic_fn.gb_step()
-
-    def soft_threshold(self, beta, threshold):
-        """
-        Apply soft thresholding operation.
-
-        Args:
-            beta: The coefficient tensor
-            threshold: The threshold value (λη)
-
-        Returns:
-            Thresholded coefficients
-        """
-        with torch.no_grad():
-            positive_mask = beta > threshold
-            negative_mask = beta < -threshold
-
-            result = torch.zeros_like(beta)
-            result[positive_mask] = beta[positive_mask] - threshold
-            result[negative_mask] = beta[negative_mask] + threshold
-
-            beta.data = result
-            # return result
 
 
 class NSForecast(BaseEstimator, RegressorMixin):
