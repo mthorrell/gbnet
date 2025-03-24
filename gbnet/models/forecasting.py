@@ -21,6 +21,10 @@ def loadModule(module):
         return lgbmodule.LGBModule
 
 
+def pd_datetime_to_seconds(x: pd.Series):
+    return pd.to_numeric(x) // 10**9
+
+
 class Forecast(BaseEstimator, RegressorMixin):
     """
     A forecasting model class that implements a trend + seasonality
@@ -101,8 +105,8 @@ class Forecast(BaseEstimator, RegressorMixin):
         df["y"] = y
 
         # Calculate changepoint locations
-        min_date = pd.to_numeric(df["ds"]).min()
-        max_date = pd.to_numeric(df["ds"]).max()
+        min_date = pd_datetime_to_seconds(df["ds"]).min()
+        max_date = pd_datetime_to_seconds(df["ds"]).max()
 
         self.model_ = ForecastModule(
             df.shape[0],
@@ -120,17 +124,16 @@ class Forecast(BaseEstimator, RegressorMixin):
 
         for _ in range(self.nrounds):
             optimizer.zero_grad()
-            preds = self.model_(df)
-            loss = mse(preds.flatten(), torch.Tensor(df["y"].values).flatten())
-
+            t, p, c = self.model_(df, components=True)
+            loss = mse((t + p).flatten(), torch.Tensor(df["y"].values).flatten())
             # Add L1 penalty for changepoints
             if self.trend_type == "PyTorch":
                 changepoint_penalty = self.changepoint_penalty * torch.norm(
                     self.model_.trend_changepoints.weight, p=1
                 )
             else:
-                changepoint_penalty = self.changepoint_penalty * torch.norm(
-                    self.model_.trend_changepoints.linear.weight, p=1
+                changepoint_penalty = self.changepoint_penalty * torch.mean(
+                    torch.square(c)
                 )
 
             loss = loss + changepoint_penalty
@@ -258,7 +261,8 @@ class ForecastModule(torch.nn.Module):
 
     def _get_changepoint_features(self, numeric_dt):
         """
-        Compute changepoint features for the piecewise linear trend.
+        Compute normalized changepoint features for the piecewise linear trend.
+        Normalization stats (mean/std) are computed on the first call and reused thereafter.
 
         Parameters
         ----------
@@ -268,7 +272,7 @@ class ForecastModule(torch.nn.Module):
         Returns
         -------
         torch.Tensor
-            Changepoint features of shape [n_samples, n_changepoints]
+            Normalized changepoint features of shape [n_samples, n_changepoints]
         """
         if self.changepoint_locs is None:
             return torch.zeros((numeric_dt.shape[0], self.n_changepoints))
@@ -279,6 +283,20 @@ class ForecastModule(torch.nn.Module):
             numeric_dt.expand(-1, self.n_changepoints)
             - self.changepoint_locs.unsqueeze(0),
         )
+
+        # Only fit mean and std once
+        if not hasattr(self, "changepoint_mean"):
+            # First time: fit and store
+            self.changepoint_mean = features.mean(dim=0, keepdim=True)
+            self.changepoint_std = features.std(dim=0, unbiased=False, keepdim=True)
+            self.changepoint_std = torch.where(
+                self.changepoint_std == 0,
+                torch.ones_like(self.changepoint_std),
+                self.changepoint_std,
+            )
+
+        # Normalize using stored stats
+        features = (features - self.changepoint_mean) / self.changepoint_std
         return features
 
     def _gblinear_initialize(self, df):
@@ -335,12 +353,14 @@ class ForecastModule(torch.nn.Module):
         df["hour"] = df["ds"].dt.hour
         df["minute"] = df["ds"].dt.minute
         df["weekday"] = df["ds"].dt.weekday
-        df["numeric_dt"] = pd.to_numeric(df["ds"])
+        df["numeric_dt"] = pd_datetime_to_seconds(df["ds"])
         if not self.initialized:
             self.initialize(df)
 
         X = np.array(df[["year", "month", "day", "hour", "minute", "weekday"]])
-        numeric_dt = torch.Tensor(np.array(pd.to_numeric(df["ds"]))).reshape([-1, 1])
+        numeric_dt = torch.Tensor(np.array(pd_datetime_to_seconds(df["ds"]))).reshape(
+            [-1, 1]
+        )
 
         # Get changepoint features
         changepoint_features = self._get_changepoint_features(numeric_dt)
@@ -348,24 +368,21 @@ class ForecastModule(torch.nn.Module):
         if self.trend_type == "PyTorch":
             # Apply batch normalization to the datetime
             normalized_dt = self.bn(numeric_dt)
-            # Base trend
             trend_component = self.trend(normalized_dt)
-            # Apply batch normalization to changepoint features
+
             normalized_changepoints = self.bn_changepoints(changepoint_features)
+            changepoint_component = self.trend_changepoints(normalized_changepoints)
             # Add changepoint effects
-            trend_component = trend_component + self.trend_changepoints(
-                normalized_changepoints
-            )
+            trend_component = trend_component + changepoint_component
         if self.trend_type == "GBLinear":
             # Base trend
             trend_component = self.trend(numeric_dt)
             # Add changepoint effects
-            trend_component = trend_component + self.trend_changepoints(
-                changepoint_features
-            )
+            changepoint_component = self.trend_changepoints(changepoint_features)
+            trend_component = trend_component + changepoint_component
 
         if components:
-            return trend_component, self.periodic_fn(X)
+            return trend_component, self.periodic_fn(X), changepoint_component
 
         forecast = trend_component + self.periodic_fn(X)
 
@@ -376,34 +393,7 @@ class ForecastModule(torch.nn.Module):
             self.trend.gb_step()
             self.trend_changepoints.gb_step()
 
-            self.soft_threshold(
-                self.trend_changepoints.linear.weight,
-                self.alpha * self.trend_changepoints.lr,
-            )
-
         self.periodic_fn.gb_step()
-
-    def soft_threshold(self, beta, threshold):
-        """
-        Apply soft thresholding operation.
-
-        Args:
-            beta: The coefficient tensor
-            threshold: The threshold value (λη)
-
-        Returns:
-            Thresholded coefficients
-        """
-        with torch.no_grad():
-            positive_mask = beta > threshold
-            negative_mask = beta < -threshold
-
-            result = torch.zeros_like(beta)
-            result[positive_mask] = beta[positive_mask] - threshold
-            result[negative_mask] = beta[negative_mask] + threshold
-
-            beta.data = result
-            # return result
 
 
 class NSForecast(BaseEstimator, RegressorMixin):
@@ -499,7 +489,7 @@ class NSForecast(BaseEstimator, RegressorMixin):
     @staticmethod
     def _prepare_dataframe(df):
         df["ds"] = pd.to_datetime(df["ds"])
-        df["numeric_dt"] = pd.to_numeric(df["ds"])
+        df["numeric_dt"] = pd_datetime_to_seconds(df["ds"])
         df["month"] = df["ds"].dt.month
         df["year"] = df["ds"].dt.year
         df["day"] = df["ds"].dt.day
