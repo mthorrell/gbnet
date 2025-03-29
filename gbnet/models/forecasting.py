@@ -22,7 +22,7 @@ def loadModule(module):
 
 
 def pd_datetime_to_seconds(x: pd.Series):
-    return pd.to_numeric(x) // 10**9
+    return pd.to_numeric(x) / 1000000000.0
 
 
 class Forecast(BaseEstimator, RegressorMixin):
@@ -87,6 +87,17 @@ class Forecast(BaseEstimator, RegressorMixin):
         changepoint_penalty=0.0,
         pytorch_lr=0.01,
     ):
+        """
+        best parameters seem to be around this while using GBLinear trend_type
+        {
+            # 'nrounds': 50,
+            # 'min_hess': 0.5,
+            # 'lambd': 0.5,
+            # 'n_changepoints': 2,
+            # 'changepoint_penalty': 1.5,
+            # 'lr': 0.7
+        }
+        """
         if params is None:
             params = {}
         self.nrounds = nrounds
@@ -126,16 +137,15 @@ class Forecast(BaseEstimator, RegressorMixin):
             optimizer.zero_grad()
             t, p, c = self.model_(df, components=True)
             loss = mse((t + p).flatten(), torch.Tensor(df["y"].values).flatten())
-            # Add L1 penalty for changepoints
+            # Add penalty for changepoints
+
             if self.trend_type == "PyTorch":
                 changepoint_penalty = self.changepoint_penalty * torch.norm(
                     self.model_.trend_changepoints.weight, p=1
                 )
             else:
-                changepoint_penalty = self.changepoint_penalty * torch.mean(
-                    torch.square(c)
-                )
-
+                penalty = self.changepoint_penalty if self.n_changepoints > 0 else 0
+                changepoint_penalty = penalty * torch.mean(torch.square(c))
             loss = loss + changepoint_penalty
 
             loss.backward(create_graph=True)
@@ -229,7 +239,7 @@ class ForecastModule(torch.nn.Module):
         self.n_changepoints = n_changepoints
 
         # Create equally spaced changepoints
-        if changepoint_range is not None:
+        if changepoint_range is not None and self.n_changepoints > 0:
             min_date, max_date = changepoint_range
             self.changepoint_locs = torch.linspace(
                 min_date, max_date, n_changepoints + 2
@@ -239,13 +249,15 @@ class ForecastModule(torch.nn.Module):
 
         if trend_type == "PyTorch":
             self.trend = torch.nn.Linear(1, 1)
-            self.trend_changepoints = torch.nn.Linear(n_changepoints, 1, bias=False)
+            self.trend_changepoints = torch.nn.Linear(
+                n_changepoints, 1, bias=False
+            )  # TODO make any fixes here that are applied to the other
             self.bn = nn.LazyBatchNorm1d()
             self.bn_changepoints = nn.LazyBatchNorm1d()
         if trend_type == "GBLinear":
             self.trend = GBLinear(1, 1, **gblinear_params)
             self.trend_changepoints = GBLinear(
-                n_changepoints, 1, bias=False, **gblinear_params
+                max(n_changepoints, 1), 1, bias=False, **gblinear_params
             )
 
         GBModule = loadModule(module_type)
@@ -274,14 +286,15 @@ class ForecastModule(torch.nn.Module):
         torch.Tensor
             Normalized changepoint features of shape [n_samples, n_changepoints]
         """
+        ncp = max(self.n_changepoints, 1)
+
         if self.changepoint_locs is None:
-            return torch.zeros((numeric_dt.shape[0], self.n_changepoints))
+            return torch.zeros((numeric_dt.shape[0], ncp))
 
         # ReLU function for changepoints: max(0, t - changepoint_loc)
         features = torch.maximum(
-            torch.zeros_like(numeric_dt.expand(-1, self.n_changepoints)),
-            numeric_dt.expand(-1, self.n_changepoints)
-            - self.changepoint_locs.unsqueeze(0),
+            torch.zeros_like(numeric_dt.expand(-1, ncp)),
+            numeric_dt.expand(-1, ncp) - self.changepoint_locs.unsqueeze(0),
         )
 
         # Only fit mean and std once
@@ -379,7 +392,8 @@ class ForecastModule(torch.nn.Module):
             trend_component = self.trend(numeric_dt)
             # Add changepoint effects
             changepoint_component = self.trend_changepoints(changepoint_features)
-            trend_component = trend_component + changepoint_component
+            if self.n_changepoints > 0:
+                trend_component = trend_component + changepoint_component
 
         if components:
             return trend_component, self.periodic_fn(X), changepoint_component
@@ -394,188 +408,3 @@ class ForecastModule(torch.nn.Module):
             self.trend_changepoints.gb_step()
 
         self.periodic_fn.gb_step()
-
-
-class NSForecast(BaseEstimator, RegressorMixin):
-    """
-    A forecasting model class that implements a trend + seasonality + minor non-stationarity
-    model using XGBModule or LGBModule
-
-    Parameters
-    ----------
-    nrounds : int, default=3000
-        Number of training iterations (epochs) for the model. Overfitting seems to
-        be fine usually.
-    xcols : list, optional
-        List of column names to be used as input features for the model.
-    params : dict, optional
-        Dictionary of additional parameters to be passed to the underlying forecast model.
-
-    Attributes
-    ----------
-    nrounds : int
-        Number of training rounds for the model.
-    xcols : list
-        Input feature column names.
-    params : dict
-        Additional parameters passed to the forecast model.
-    model_ : NSForecastModule or None
-        Trained forecast model instance. Set after fitting.
-    losses_ : list
-        List of loss values recorded at each training iteration.
-
-    Methods
-    -------
-    fit(X, y)
-        Trains the forecast model using the input features X and target variable y.
-        X must contain the datetime column 'ds'.
-    predict(X)
-        Predicts target values based on the input features X.
-
-    Notes
-    -----
-    The model uses a linear trend + some basic features in XGBModule or LGBModule. The
-    loss function used is Mean Squared Error (MSE).
-    """
-
-    def __init__(self, nrounds=3000, xcols=None, params=None, module_type="XGBModule"):
-        if params is None:
-            params = {}
-        if xcols is None:
-            xcols = []
-        self.nrounds = nrounds
-        self.xcols = xcols
-        self.params = params
-        self.model_ = None
-        self.losses_ = []
-        self.module_type = module_type
-
-    def fit(self, X, y=None):
-        df = X.copy()
-        df["y"] = y
-        df = self._prepare_dataframe(df)
-        df = recursive_split(df, "ds", 4)
-        self.model_ = NSForecastModule(
-            df.shape[0],
-            xcols=self.xcols,
-            params=self.params,
-            module_type=self.module_type,
-        )
-        self.model_.train()
-        optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.1)
-        mse = torch.nn.MSELoss()
-
-        for _ in range(self.nrounds):
-            optimizer.zero_grad()
-            preds = self.model_(df)
-            loss = mse(preds.flatten(), torch.Tensor(df["y"].values).flatten())
-            loss.backward(create_graph=True)
-            self.losses_.append(loss.detach().item())
-            self.model_.gb_step()
-            optimizer.step()
-
-        self.model_.eval()
-        return self
-
-    def predict(self, X):
-        check_is_fitted(self, "model_")
-        df = X.copy()
-        df = self._prepare_dataframe(df)
-        for j in range(1, 5):
-            df[f"split_{j}"] = 1.0
-        preds = self.model_(df).detach().numpy()
-        return preds.flatten()
-
-    @staticmethod
-    def _prepare_dataframe(df):
-        df["ds"] = pd.to_datetime(df["ds"])
-        df["numeric_dt"] = pd_datetime_to_seconds(df["ds"])
-        df["month"] = df["ds"].dt.month
-        df["year"] = df["ds"].dt.year
-        df["day"] = df["ds"].dt.day
-        df["weekday"] = df["ds"].dt.weekday
-        df["hour"] = df["ds"].dt.hour
-        df["minute"] = df["ds"].dt.minute
-        return df
-
-
-class NSForecastModule(torch.nn.Module):
-    def __init__(self, n_features, xcols=None, params=None, module_type="XGBModule"):
-        super(NSForecastModule, self).__init__()
-        if params is None:
-            params = {}
-        if xcols is None:
-            xcols = []
-        GBModule = loadModule(module_type)
-        self.seasonality = GBModule(n_features, 10 + len(xcols), 1, params=params)
-        self.xcols = xcols
-        self.trend = torch.nn.Linear(1, 1)
-        self.bn = nn.LazyBatchNorm1d()
-        self.initialized = False
-
-    def initialize(self, df):
-        X = df.copy()
-        X = (
-            X[X["numeric_dt"].notnull() & X["y"].notnull()]
-            .reset_index(drop=True)
-            .copy()
-        )
-
-        X["intercept"] = 1
-        X["numeric_dt"] = (X["numeric_dt"] - X["numeric_dt"].mean()) / X[
-            "numeric_dt"
-        ].std()
-        ests = lstsq(X[["intercept", "numeric_dt"]], X[["y"]])[0]
-
-        with torch.no_grad():
-            self.trend.weight.copy_(torch.Tensor(ests[1:, :]))
-            self.trend.bias.copy_(torch.Tensor(ests[0]))
-
-        self.initialized = True
-
-    def forward(self, df):
-        if not self.initialized:
-            self.initialize(df)
-
-        datetime_features = np.array(
-            df[
-                [
-                    "split_1",
-                    "split_2",
-                    "split_3",
-                    "split_4",
-                    "year",
-                    "minute",
-                    "hour",
-                    "month",
-                    "day",
-                    "weekday",
-                ]
-                + self.xcols
-            ]
-        )
-        trend = torch.Tensor(df["year"].values).reshape([-1, 1])
-
-        output = self.trend(self.bn(trend)) + self.seasonality(datetime_features)
-        return output
-
-    def gb_step(self):
-        self.seasonality.gb_step()
-
-
-def recursive_split(df, column, depth):
-    """Adds columns of zeros and ones in attempt to address changepoints"""
-    df = df.sort_values(by=column).reset_index(drop=True)
-    binary_cols = pd.DataFrame(index=df.index)
-
-    def split_group(indices, level):
-        if level > depth:
-            return
-        mid = len(indices) // 2
-        binary_cols.loc[indices[:mid], f"split_{level}"] = 0
-        binary_cols.loc[indices[mid:], f"split_{level}"] = 1
-        split_group(indices[:mid], level + 1)
-        split_group(indices[mid:], level + 1)
-
-    split_group(df.index, 1)
-    return pd.concat([df, binary_cols], axis=1)
