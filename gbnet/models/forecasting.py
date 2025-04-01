@@ -186,6 +186,10 @@ class ForecastModule(torch.nn.Module):
     ):
         super(ForecastModule, self).__init__()
         assert trend_type in {"PyTorch", "GBLinear"}
+
+        self.initialized = False
+        self.trend_type = trend_type
+
         if trend_type == "PyTorch":
             self.trend = torch.nn.Linear(1, 1)
             self.bn = nn.LazyBatchNorm1d()
@@ -199,11 +203,21 @@ class ForecastModule(torch.nn.Module):
             output_dim=1,
             params=params,
         )
-        self.trend_fn = loadModule("LGBModule")(
-            batch_size=n, input_dim=1, output_dim=1, params=gbchangepoint_params
+
+        # initialize changepoints components
+        cp_params = {"n_changepoints": 100, "gbmodule": "XGBModule"}
+        cp_params.update(gbchangepoint_params)
+
+        self.n_changepoints = cp_params.pop("n_changepoints")
+        self.cp_module = cp_params.pop("gbmodule")
+        self.trend_fn = loadModule(self.cp_module)(
+            batch_size=self.n_changepoints, input_dim=1, output_dim=1, params=cp_params
         )
-        self.initialized = False
-        self.trend_type = trend_type
+
+    def _changepoint_initialize(self, df):
+        self.cp_input = np.linspace(
+            df["numeric_dt"].min(), df["numeric_dt"].max(), self.n_changepoints + 2
+        )[1:-1].reshape([-1, 1])
 
     def _gblinear_initialize(self, df):
         X = df.copy()
@@ -223,6 +237,7 @@ class ForecastModule(torch.nn.Module):
         self.initialized = True
 
     def initialize(self, df):
+        self._changepoint_initialize(df)
         if self.trend_type == "GBLinear":
             self._gblinear_initialize(df)
             return
@@ -277,19 +292,9 @@ class ForecastModule(torch.nn.Module):
                 )
             )
 
-        if self.training:
-            base_sum = 0
-            self.eval_sum = self.trend_fn(df[["numeric_dt"]]).sum()
-        else:
-            self.ev_count = self.ev_count + 1
-            if self.ev_count == 2:
-                base_sum = 0
-            else:
-                base_sum = self.eval_sum
-
-        gb_trend = (
-            base_sum + torch.cumsum(self.trend_fn(df[["numeric_dt"]]), 0)
-        ) * torch.Tensor(np.array(df["numeric_dt"]).reshape([-1, 1]) * 60 * 60 * 24)
+        gb_trend = self.forward_changepoints(df) * torch.Tensor(
+            np.array(df["numeric_dt"]).reshape([-1, 1])
+        )
 
         forecast = trend_component + self.periodic_fn(X) + gb_trend
         if components:
@@ -297,9 +302,96 @@ class ForecastModule(torch.nn.Module):
 
         return forecast
 
+    def forward_changepoints(self, df):
+        slope_adjustments = self.trend_fn(self.cp_input)
+        changepoints = torch.concatenate(
+            [torch.Tensor(self.cp_input), slope_adjustments], axis=1
+        )
+        cuml_sum = efficient_cumulative_sum_at_timepoints(
+            changepoints, torch.Tensor(np.array(df["numeric_dt"]).reshape([-1, 1]))
+        )
+        return cuml_sum
+
     def gb_step(self):
         if self.trend_type == "GBLinear":
             self.trend.gb_step()
 
         self.trend_fn.gb_step()
         self.periodic_fn.gb_step()
+
+
+def cumulative_sum_at_timepoints(changepoints, timepoints):
+    """
+    Calculate the cumulative sum of the 2nd column in changepoints for rows where
+    the 1st column is less than each value in timepoints.
+
+    Args:
+        changepoints: Tensor of shape [N, 2] where the 1st column contains time values
+                      and the 2nd column contains change values
+        timepoints: Tensor of shape [M] containing time points to evaluate
+
+    Returns:
+        Tensor of shape [M] containing cumulative sums at each timepoint
+    """
+    # Sort changepoints by their timepoint (1st column) for correctness
+    sorted_indices = torch.argsort(changepoints[:, 0])
+    sorted_changepoints = changepoints[sorted_indices]
+
+    # Extract time and change values
+    times = sorted_changepoints[:, 0]
+    changes = sorted_changepoints[:, 1]
+
+    # Calculate cumulative sum of all changes
+    cumsum_changes = torch.cumsum(changes, dim=0)
+
+    # For each timepoint, find the index of the last changepoint that's less than it
+    # This uses broadcasting to compare each timepoint against all times
+    mask = times.unsqueeze(0) < timepoints.unsqueeze(1)  # Shape: [M, N]
+
+    # Get the indices of the last True value in each row
+    # We first check if any value is True, for timepoints that are before all changepoints
+    any_true = torch.any(mask, dim=1)
+
+    # Find the position of the last True in each row
+    last_true_indices = torch.sum(mask.int(), dim=1) - 1
+
+    # Create the result tensor
+    result = torch.zeros_like(timepoints, dtype=cumsum_changes.dtype)
+
+    # Only assign values where there's at least one changepoint before the timepoint
+    valid_indices = torch.where(any_true)[0]
+    if len(valid_indices) > 0:
+        result[valid_indices] = cumsum_changes[last_true_indices[valid_indices]]
+
+    return result
+
+
+def efficient_cumulative_sum_at_timepoints(changepoints, timepoints):
+    """
+    More efficient implementation using searchsorted.
+    """
+    # Sort changepoints by time (1st column)
+    sorted_indices = torch.argsort(changepoints[:, 0])
+    sorted_changepoints = changepoints[sorted_indices]
+
+    # Extract time and change values
+    times = sorted_changepoints[:, 0]
+    changes = sorted_changepoints[:, 1]
+
+    # Calculate cumulative sum of all changes
+    cumsum_changes = torch.cumsum(changes, dim=0)
+
+    # For each timepoint, find the index where it would be inserted in the sorted times
+    # This gives us the position of the first element that is >= the timepoint
+    # So we subtract 1 to get the position of the last element < timepoint
+    indices = torch.searchsorted(times, timepoints) - 1
+
+    # Create the result tensor
+    result = torch.zeros_like(timepoints, dtype=cumsum_changes.dtype)
+
+    # Only get values for timepoints that are after at least one changepoint
+    valid_mask = indices >= 0
+    if torch.any(valid_mask):
+        result[valid_mask] = cumsum_changes[indices[valid_mask]]
+
+    return result
