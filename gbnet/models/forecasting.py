@@ -79,6 +79,7 @@ class Forecast(BaseEstimator, RegressorMixin):
         module_type="XGBModule",
         trend_type="PyTorch",
         gblinear_params={},
+        gbchangepoint_params={},
     ):
         if params is None:
             params = {}
@@ -89,6 +90,7 @@ class Forecast(BaseEstimator, RegressorMixin):
         self.module_type = module_type
         self.trend_type = trend_type
         self.gblinear_params = gblinear_params
+        self.gbchangepoint_params = gbchangepoint_params
 
     def fit(self, X, y=None):
         df = X.copy()
@@ -100,6 +102,7 @@ class Forecast(BaseEstimator, RegressorMixin):
             module_type=self.module_type,
             trend_type=self.trend_type,
             gblinear_params=self.gblinear_params,
+            gbchangepoint_params=self.gbchangepoint_params,
         )
         self.model_.train()
         optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.01)
@@ -118,9 +121,13 @@ class Forecast(BaseEstimator, RegressorMixin):
         self.model_.eval()
         return self
 
-    def predict(self, X):
+    def predict(self, X, components=False):
         check_is_fitted(self, "model_")
         df = X.copy()
+        if components:
+            t, p, c = self.model_(df, components=True)
+            return t, p, c
+
         preds = self.model_(df).detach().numpy()
         return preds.flatten()
 
@@ -175,6 +182,7 @@ class ForecastModule(torch.nn.Module):
         module_type="XGBModule",
         trend_type="PyTorch",
         gblinear_params={},
+        gbchangepoint_params={},
     ):
         super(ForecastModule, self).__init__()
         assert trend_type in {"PyTorch", "GBLinear"}
@@ -191,10 +199,8 @@ class ForecastModule(torch.nn.Module):
             output_dim=1,
             params=params,
         )
-        trend_fn_params = params.copy()
-        trend_fn_params["eta"] = trend_fn_params["eta"] / 2
-        self.trend_fn = GBModule(
-            batch_size=n, input_dim=1, output_dim=1, params=trend_fn_params
+        self.trend_fn = loadModule("LGBModule")(
+            batch_size=n, input_dim=1, output_dim=1, params=gbchangepoint_params
         )
         self.initialized = False
         self.trend_type = trend_type
@@ -240,7 +246,7 @@ class ForecastModule(torch.nn.Module):
 
         self.initialized = True
 
-    def forward(self, df):
+    def forward(self, df, components=False):
         df = df.copy()
         # Assume df formatted like prophet (columns 'ds' and 'y')
         df["year"] = df["ds"].dt.year
@@ -254,6 +260,7 @@ class ForecastModule(torch.nn.Module):
             self.initialize(df)
 
         X = np.array(df[["year", "month", "day", "hour", "minute", "weekday"]])
+        # X = np.array(df[["month", "day", "hour", "minute", "weekday"]])
 
         if self.trend_type == "PyTorch":
             trend_component = self.trend(
@@ -270,11 +277,23 @@ class ForecastModule(torch.nn.Module):
                 )
             )
 
-        forecast = (
-            trend_component
-            + self.periodic_fn(X)
-            + self.trend_fn(df["numeric_dt"]) * df["numeric_dt"]
-        )
+        if self.training:
+            base_sum = 0
+            self.eval_sum = self.trend_fn(df[["numeric_dt"]]).sum()
+        else:
+            self.ev_count = self.ev_count + 1
+            if self.ev_count == 2:
+                base_sum = 0
+            else:
+                base_sum = self.eval_sum
+
+        gb_trend = (
+            base_sum + torch.cumsum(self.trend_fn(df[["numeric_dt"]]), 0)
+        ) * torch.Tensor(np.array(df["numeric_dt"]).reshape([-1, 1]) * 60 * 60 * 24)
+
+        forecast = trend_component + self.periodic_fn(X) + gb_trend
+        if components:
+            return trend_component, self.periodic_fn(X), gb_trend
 
         return forecast
 
@@ -282,4 +301,5 @@ class ForecastModule(torch.nn.Module):
         if self.trend_type == "GBLinear":
             self.trend.gb_step()
 
+        self.trend_fn.gb_step()
         self.periodic_fn.gb_step()
