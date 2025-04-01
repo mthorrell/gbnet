@@ -1,6 +1,6 @@
 # GBNet
 
-Gradient boosting libraries integrated with Pytorch
+XGBoost and LightGBM integrated into Pytorch as PyTorch Modules
 
 ## Table of Contents
 
