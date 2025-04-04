@@ -205,10 +205,11 @@ class ForecastModule(torch.nn.Module):
         )
 
         # initialize changepoints components
-        cp_params = {"n_changepoints": 100, "gbmodule": "XGBModule"}
+        cp_params = {"n_changepoints": 100, "gbmodule": "XGBModule", "cp_gap": 0.9}
         cp_params.update(gbchangepoint_params)
 
         self.n_changepoints = cp_params.pop("n_changepoints")
+        self.cp_gap = cp_params.pop("cp_gap")
         self.cp_module = cp_params.pop("gbmodule")
         self.trend_fn = loadModule(self.cp_module)(
             batch_size=self.n_changepoints, input_dim=1, output_dim=1, params=cp_params
@@ -216,7 +217,10 @@ class ForecastModule(torch.nn.Module):
 
     def _changepoint_initialize(self, df):
         self.cp_input = np.linspace(
-            df["numeric_dt"].min(), df["numeric_dt"].max(), self.n_changepoints + 2
+            df["numeric_dt"].min(),
+            df["numeric_dt"].min()
+            + self.cp_gap * (df["numeric_dt"].max() - df["numeric_dt"].min()),
+            self.n_changepoints + 2,
         )[1:-1].reshape([-1, 1])
 
     def _gblinear_initialize(self, df):
