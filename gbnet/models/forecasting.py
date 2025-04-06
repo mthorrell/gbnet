@@ -296,9 +296,7 @@ class ForecastModule(torch.nn.Module):
                 )
             )
 
-        gb_trend = self.forward_changepoints(df) * torch.Tensor(
-            np.array(df["numeric_dt"]).reshape([-1, 1])
-        )
+        gb_trend = self.forward_changepoints(df)
 
         forecast = trend_component + self.periodic_fn(X) + gb_trend
         if components:
@@ -311,10 +309,10 @@ class ForecastModule(torch.nn.Module):
         changepoints = torch.concatenate(
             [torch.Tensor(self.cp_input), slope_adjustments], axis=1
         )
-        cuml_sum = efficient_cumulative_sum_at_timepoints(
-            changepoints, torch.Tensor(np.array(df["numeric_dt"]).reshape([-1, 1]))
+        cuml_adj = piecewise_linear_function(
+            changepoints, torch.Tensor(np.array(df["numeric_dt"]))
         )
-        return cuml_sum
+        return cuml_adj.reshape([-1, 1])
 
     def gb_step(self):
         if self.trend_type == "GBLinear":
@@ -324,78 +322,42 @@ class ForecastModule(torch.nn.Module):
         self.periodic_fn.gb_step()
 
 
-def cumulative_sum_at_timepoints(changepoints, timepoints):
+def piecewise_linear_function(changepoints, timepoints):
     """
-    Calculate the cumulative sum of the 2nd column in changepoints for rows where
-    the 1st column is less than each value in timepoints.
+    Calculate a piecewise linear function based on changepoints evaluated at timepoints.
+
+    For every tp in timepoints, compute:
+    Sum_{(cp1, cp2) such that cp1 < tp} cp2 * (tp - cp1)
 
     Args:
-        changepoints: Tensor of shape [N, 2] where the 1st column contains time values
-                      and the 2nd column contains change values
-        timepoints: Tensor of shape [M] containing time points to evaluate
+        changepoints: torch.Tensor of shape [N, 2] where:
+            - First column (cp1) contains the positions of changepoints
+            - Second column (cp2) contains the slopes at those changepoints
+        timepoints: torch.Tensor of shape [M] containing points to evaluate the function
 
     Returns:
-        Tensor of shape [M] containing cumulative sums at each timepoint
+        torch.Tensor of shape [M] containing the evaluated function at each timepoint
     """
-    # Sort changepoints by their timepoint (1st column) for correctness
-    sorted_indices = torch.argsort(changepoints[:, 0])
-    sorted_changepoints = changepoints[sorted_indices]
+    # Extract cp1 and cp2 from changepoints
+    cp1 = changepoints[:, 0]  # Shape: [N]
+    cp2 = changepoints[:, 1]  # Shape: [N]
 
-    # Extract time and change values
-    times = sorted_changepoints[:, 0]
-    changes = sorted_changepoints[:, 1]
+    # Reshape for broadcasting
+    # cp1: [N, 1], timepoints: [1, M] for broadcasting to [N, M]
+    cp1_expanded = cp1.unsqueeze(1)  # Shape: [N, 1]
+    timepoints_expanded = timepoints.unsqueeze(0)  # Shape: [1, M]
 
-    # Calculate cumulative sum of all changes
-    cumsum_changes = torch.cumsum(changes, dim=0)
+    # Create mask where cp1 < tp (shape: [N, M])
+    mask = (cp1_expanded < timepoints_expanded).float()
 
-    # For each timepoint, find the index of the last changepoint that's less than it
-    # This uses broadcasting to compare each timepoint against all times
-    mask = times.unsqueeze(0) < timepoints.unsqueeze(1)  # Shape: [M, N]
+    # Calculate (tp - cp1) for all pairs (shape: [N, M])
+    time_diffs = (timepoints_expanded - cp1_expanded) * mask
 
-    # Get the indices of the last True value in each row
-    # We first check if any value is True, for timepoints that are before all changepoints
-    any_true = torch.any(mask, dim=1)
+    # Multiply by cp2 (shape: [N, M])
+    cp2_expanded = cp2.unsqueeze(1)  # Shape: [N, 1]
+    contributions = cp2_expanded * time_diffs
 
-    # Find the position of the last True in each row
-    last_true_indices = torch.sum(mask.int(), dim=1) - 1
-
-    # Create the result tensor
-    result = torch.zeros_like(timepoints, dtype=cumsum_changes.dtype)
-
-    # Only assign values where there's at least one changepoint before the timepoint
-    valid_indices = torch.where(any_true)[0]
-    if len(valid_indices) > 0:
-        result[valid_indices] = cumsum_changes[last_true_indices[valid_indices]]
-
-    return result
-
-
-def efficient_cumulative_sum_at_timepoints(changepoints, timepoints):
-    """
-    More efficient implementation using searchsorted.
-    """
-    # Sort changepoints by time (1st column)
-    sorted_indices = torch.argsort(changepoints[:, 0])
-    sorted_changepoints = changepoints[sorted_indices]
-
-    # Extract time and change values
-    times = sorted_changepoints[:, 0]
-    changes = sorted_changepoints[:, 1]
-
-    # Calculate cumulative sum of all changes
-    cumsum_changes = torch.cumsum(changes, dim=0)
-
-    # For each timepoint, find the index where it would be inserted in the sorted times
-    # This gives us the position of the first element that is >= the timepoint
-    # So we subtract 1 to get the position of the last element < timepoint
-    indices = torch.searchsorted(times, timepoints) - 1
-
-    # Create the result tensor
-    result = torch.zeros_like(timepoints, dtype=cumsum_changes.dtype)
-
-    # Only get values for timepoints that are after at least one changepoint
-    valid_mask = indices >= 0
-    if torch.any(valid_mask):
-        result[valid_mask] = cumsum_changes[indices[valid_mask]]
+    # Sum over all changepoints (axis 0) to get final result for each timepoint
+    result = torch.sum(contributions, dim=0)  # Shape: [M]
 
     return result
