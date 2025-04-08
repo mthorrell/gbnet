@@ -205,15 +205,23 @@ class ForecastModule(torch.nn.Module):
         )
 
         # initialize changepoints components
-        cp_params = {"n_changepoints": 100, "gbmodule": "XGBModule", "cp_gap": 0.9}
+        cp_params = {
+            "n_changepoints": 100,
+            "gbmodule": "XGBModule",
+            "cp_gap": 0.9,
+            "cp_train_gap": 10,
+        }
         cp_params.update(gbchangepoint_params)
 
         self.n_changepoints = cp_params.pop("n_changepoints")
         self.cp_gap = cp_params.pop("cp_gap")
         self.cp_module = cp_params.pop("gbmodule")
+        self.cp_train_gap = cp_params.pop("cp_train_gap")
+
         self.trend_fn = loadModule(self.cp_module)(
             batch_size=self.n_changepoints, input_dim=1, output_dim=1, params=cp_params
         )
+        self.cp_train_count = 0
 
     def _changepoint_initialize(self, df):
         self.cp_input = np.linspace(
@@ -319,7 +327,9 @@ class ForecastModule(torch.nn.Module):
             self.trend.gb_step()
 
         self.trend_fn.gb_step()
-        self.periodic_fn.gb_step()
+        self.cp_train_count += 1
+        if self.cp_train_count > self.cp_train_gap:
+            self.periodic_fn.gb_step()
 
 
 def piecewise_linear_function(changepoints, timepoints):
