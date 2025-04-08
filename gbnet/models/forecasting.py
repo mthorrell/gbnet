@@ -222,13 +222,15 @@ class ForecastModule(torch.nn.Module):
             batch_size=self.n_changepoints, input_dim=1, output_dim=1, params=cp_params
         )
         self.cp_train_count = 0
+        self.use_cp = True if self.n_changepoints > 0 else False
 
     def _changepoint_initialize(self, df):
+        ncp = self.n_changepoints if self.use_cp else 1
         self.cp_input = np.linspace(
             df["numeric_dt"].min(),
             df["numeric_dt"].min()
             + self.cp_gap * (df["numeric_dt"].max() - df["numeric_dt"].min()),
-            self.n_changepoints + 2,
+            ncp + 2,
         )[1:-1].reshape([-1, 1])
 
     def _gblinear_initialize(self, df):
@@ -286,8 +288,9 @@ class ForecastModule(torch.nn.Module):
         if not self.initialized:
             self.initialize(df)
 
-        X = np.array(df[["year", "month", "day", "hour", "minute", "weekday"]])
-        # X = np.array(df[["month", "day", "hour", "minute", "weekday"]])
+        X = np.array(
+            df[["year", "month", "day", "hour", "minute", "weekday"]]
+        )  # TODO just need to do this once
 
         if self.trend_type == "PyTorch":
             trend_component = self.trend(
@@ -314,6 +317,8 @@ class ForecastModule(torch.nn.Module):
 
     def forward_changepoints(self, df):
         slope_adjustments = self.trend_fn(self.cp_input)
+        if not self.use_cp:
+            return torch.zeros([df.shape[0], 1])
         changepoints = torch.concatenate(
             [torch.Tensor(self.cp_input), slope_adjustments], axis=1
         )
