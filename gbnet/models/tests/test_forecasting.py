@@ -5,12 +5,6 @@ import numpy as np
 import pandas as pd
 from gbnet.models import forecasting
 
-# Import your CustomEstimator class
-# from your_module import CustomEstimator  # Replace 'your_module' with the actual module name
-
-# For the purpose of this test, I'll assume CustomEstimator is defined in the same script.
-# If it's in a different module, you should import it accordingly.
-
 
 class TestForecast(unittest.TestCase):
     def setUp(self):

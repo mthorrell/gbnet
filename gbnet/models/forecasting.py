@@ -74,23 +74,52 @@ class Forecast(BaseEstimator, RegressorMixin):
 
     def __init__(
         self,
-        nrounds=500,
-        params=None,
+        nrounds=50,
+        params={},
         module_type="XGBModule",
-        trend_type="PyTorch",
         gblinear_params={},
         gbchangepoint_params={},
     ):
-        if params is None:
-            params = {}
         self.nrounds = nrounds
-        self.params = params
         self.model_ = None
         self.losses_ = []
         self.module_type = module_type
-        self.trend_type = trend_type
-        self.gblinear_params = gblinear_params
-        self.gbchangepoint_params = gbchangepoint_params
+        self.trend_type = "GBLinear"
+
+        self.params = {"eta": 0.17, "max_depth": 3, "lambda": 1, "alpha": 8}
+        self.params.update(params)
+
+        self.gblinear_params = {"min_hess": 0.0, "lambd": 0.1, "lr": 0.9}
+        self.gblinear_params.update(gblinear_params)
+
+        self.gbchangepoint_params = {
+            "n_changepoints": 32,
+            "eta": 0.9,
+            "max_depth": 9,
+            "lambda": 6.5,
+            "alpha": 3.8,
+            "cp_gap": 0.5,
+            "cp_train_gap": 4,
+        }
+        self.gbchangepoint_params.update(gbchangepoint_params)
+
+        {
+            "nrounds": 39,
+            "gbm_eta": 0.17,
+            "gbm_max_depth": 3,
+            "gbm_lambda": 1,
+            "gbm_alpha": 8,
+            "min_hess": 0.0,
+            "lambd": 0.1,
+            "lr": 0.9,
+            "gbc_n_changepoints": 32,
+            "gbc_eta": 0.9,
+            "gbc_max_depth": 9,
+            "gbc_lambda": 6.5,
+            "gbc_alpha": 3.8,
+            "gbc_cp_gap": 0.5,
+            "gbc_cp_train_gap": 4,
+        }
 
     def fit(self, X, y=None):
         df = X.copy()
