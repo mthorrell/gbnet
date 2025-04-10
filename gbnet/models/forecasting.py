@@ -10,7 +10,7 @@ from gbnet.gblinear import GBLinear
 
 
 def pd_datetime_to_seconds(x: pd.Series):
-    return pd.to_numeric(x) / 1000000000.0
+    return pd.to_numeric(x) / 1000000000.0  # convert to seconds
 
 
 def loadModule(module):
@@ -42,7 +42,7 @@ class Forecast(BaseEstimator, RegressorMixin):
     trend_type : str, default="PyTorch"
         Type of trend component to use. Can be either "PyTorch" for a PyTorch linear layer
         or "GBLinear" for a gradient boosting linear layer.
-    gblinear_params : dict, default={}
+    linear_params : dict, default={}
         Parameters to pass to GBLinear if trend_type="GBLinear". Ignored if trend_type="PyTorch".
         See gbnet.gblinear.GBLinear for available parameters.
 
@@ -77,8 +77,8 @@ class Forecast(BaseEstimator, RegressorMixin):
         nrounds=50,
         params={},
         module_type="XGBModule",
-        gblinear_params={},
-        gbchangepoint_params={},
+        linear_params={},
+        changepoint_params={},
     ):
         self.nrounds = nrounds
         self.model_ = None
@@ -89,10 +89,10 @@ class Forecast(BaseEstimator, RegressorMixin):
         self.params = {"eta": 0.17, "max_depth": 3, "lambda": 1, "alpha": 8}
         self.params.update(params)
 
-        self.gblinear_params = {"min_hess": 0.0, "lambd": 0.1, "lr": 0.9}
-        self.gblinear_params.update(gblinear_params)
+        self.linear_params = {"min_hess": 0.0, "lambd": 0.1, "lr": 0.9}
+        self.linear_params.update(linear_params)
 
-        self.gbchangepoint_params = {
+        self.changepoint_params = {
             "n_changepoints": 32,
             "eta": 0.9,
             "max_depth": 9,
@@ -101,7 +101,7 @@ class Forecast(BaseEstimator, RegressorMixin):
             "cp_gap": 0.5,
             "cp_train_gap": 4,
         }
-        self.gbchangepoint_params.update(gbchangepoint_params)
+        self.changepoint_params.update(changepoint_params)
 
     def fit(self, X, y=None):
         df = X.copy()
@@ -112,8 +112,8 @@ class Forecast(BaseEstimator, RegressorMixin):
             params=self.params,
             module_type=self.module_type,
             trend_type=self.trend_type,
-            gblinear_params=self.gblinear_params,
-            gbchangepoint_params=self.gbchangepoint_params,
+            linear_params=self.linear_params,
+            changepoint_params=self.changepoint_params,
         )
         self.model_.train()
         optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.01)
@@ -126,8 +126,6 @@ class Forecast(BaseEstimator, RegressorMixin):
             loss.backward(create_graph=True)
             self.losses_.append(loss.detach().item())
             self.model_.gb_step()
-            if self.trend_type == "PyTorch":
-                optimizer.step()
 
         self.model_.eval()
         return self
@@ -162,7 +160,7 @@ class ForecastModule(torch.nn.Module):
         Defaults to "XGBModule".
     trend_type : str, optional
         Type of trend model to use, either "PyTorch" or "GBLinear". Defaults to "PyTorch".
-    gblinear_params : dict, optional
+    linear_params : dict, optional
         Parameters passed to GBLinear trend model if trend_type="GBLinear". Defaults to {}.
 
     Attributes
@@ -192,8 +190,8 @@ class ForecastModule(torch.nn.Module):
         params=None,
         module_type="XGBModule",
         trend_type="PyTorch",
-        gblinear_params={},
-        gbchangepoint_params={},
+        linear_params={},
+        changepoint_params={},
     ):
         super(ForecastModule, self).__init__()
         assert trend_type in {"PyTorch", "GBLinear"}
@@ -205,7 +203,7 @@ class ForecastModule(torch.nn.Module):
             self.trend = torch.nn.Linear(1, 1)
             self.bn = nn.LazyBatchNorm1d()
         if trend_type == "GBLinear":
-            self.trend = GBLinear(1, 1, **gblinear_params)
+            self.trend = GBLinear(1, 1, **linear_params)
 
         GBModule = loadModule(module_type)
         self.periodic_fn = GBModule(
@@ -222,7 +220,7 @@ class ForecastModule(torch.nn.Module):
             "cp_gap": 0.9,
             "cp_train_gap": 10,
         }
-        cp_params.update(gbchangepoint_params)
+        cp_params.update(changepoint_params)
 
         self.n_changepoints = cp_params.pop("n_changepoints")
         self.cp_gap = cp_params.pop("cp_gap")
