@@ -219,7 +219,10 @@ class ForecastModule(torch.nn.Module):
         self.cp_train_gap = cp_params.pop("cp_train_gap")
 
         self.trend_fn = loadModule(self.cp_module)(
-            batch_size=self.n_changepoints, input_dim=1, output_dim=1, params=cp_params
+            batch_size=max(1, self.n_changepoints),
+            input_dim=1,
+            output_dim=1,
+            params=cp_params,
         )
         self.cp_train_count = 0
         self.use_cp = True if self.n_changepoints > 0 else False
@@ -330,6 +333,10 @@ class ForecastModule(torch.nn.Module):
     def gb_step(self):
         if self.trend_type == "GBLinear":
             self.trend.gb_step()
+
+        if not self.use_cp:
+            self.periodic_fn.gb_step()
+            return
 
         self.trend_fn.gb_step()
         self.cp_train_count += 1
