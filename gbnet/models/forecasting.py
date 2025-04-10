@@ -103,24 +103,6 @@ class Forecast(BaseEstimator, RegressorMixin):
         }
         self.gbchangepoint_params.update(gbchangepoint_params)
 
-        {
-            "nrounds": 39,
-            "gbm_eta": 0.17,
-            "gbm_max_depth": 3,
-            "gbm_lambda": 1,
-            "gbm_alpha": 8,
-            "min_hess": 0.0,
-            "lambd": 0.1,
-            "lr": 0.9,
-            "gbc_n_changepoints": 32,
-            "gbc_eta": 0.9,
-            "gbc_max_depth": 9,
-            "gbc_lambda": 6.5,
-            "gbc_alpha": 3.8,
-            "gbc_cp_gap": 0.5,
-            "gbc_cp_train_gap": 4,
-        }
-
     def fit(self, X, y=None):
         df = X.copy()
         df["y"] = y
