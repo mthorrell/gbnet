@@ -16,7 +16,7 @@ class TestForecast(unittest.TestCase):
 
     def test_fit_predict(self):
         """
-        Test that the estimator can fit and predict without errors.
+        Test that the estimator can fit and predict without errors using GBLinear trend.
         """
         # Split data into training and testing sets
         train_df = self.df.iloc[:150]
@@ -41,36 +41,9 @@ class TestForecast(unittest.TestCase):
             "Predictions are not numerical.",
         )
 
-    def test_fit_predict_gblinear(self):
-        """
-        Test that the estimator can fit and predict without errors using GBLinear trend.
-        """
-        # Split data into training and testing sets
-        train_df = self.df.iloc[:150]
-        test_df = self.df.iloc[150:]
-
-        # Initialize and fit the estimator
-        estimator = forecasting.Forecast(nrounds=100, trend_type="GBLinear")
-        estimator.fit(train_df[["ds"]], train_df["y"])
-
-        # Make predictions
-        predictions = estimator.predict(test_df[["ds"]])
-
-        # Check that predictions have the correct length
-        self.assertEqual(len(predictions), len(test_df), "Prediction length mismatch.")
-
-        # Check that predictions are not NaN
-        self.assertFalse(np.isnan(predictions).any(), "Predictions contain NaN values.")
-
-        # Optionally, check that predictions are numerical
-        self.assertTrue(
-            np.issubdtype(predictions.dtype, np.number),
-            "Predictions are not numerical.",
-        )
-
     def test_fit_predict_lgbm(self):
         """
-        Test that the estimator can fit and predict without errors.
+        Test that the estimator can fit and predict without errors using LGBModule and GBLinear trend.
         """
         # Split data into training and testing sets
         train_df = self.df.iloc[:150]
@@ -95,66 +68,7 @@ class TestForecast(unittest.TestCase):
             "Predictions are not numerical.",
         )
 
-    def test_fit_predict_lgbm_gblinear(self):
-        """
-        Test that the estimator can fit and predict without errors using LGBModule and GBLinear trend.
-        """
-        # Split data into training and testing sets
-        train_df = self.df.iloc[:150]
-        test_df = self.df.iloc[150:]
-
-        # Initialize and fit the estimator
-        estimator = forecasting.Forecast(
-            nrounds=100, module_type="LGBModule", trend_type="GBLinear"
-        )
-        estimator.fit(train_df[["ds"]], train_df["y"])
-
-        # Make predictions
-        predictions = estimator.predict(test_df[["ds"]])
-
-        # Check that predictions have the correct length
-        self.assertEqual(len(predictions), len(test_df), "Prediction length mismatch.")
-
-        # Check that predictions are not NaN
-        self.assertFalse(np.isnan(predictions).any(), "Predictions contain NaN values.")
-
-        # Optionally, check that predictions are numerical
-        self.assertTrue(
-            np.issubdtype(predictions.dtype, np.number),
-            "Predictions are not numerical.",
-        )
-
     def test_loss_decrease(self):
-        """
-        Test that the training loss decreases over epochs.
-        """
-        # Use only the training data
-        train_df = self.df.iloc[:150]
-
-        # Initialize and fit the estimator
-        estimator = forecasting.Forecast(nrounds=100)
-        estimator.fit(train_df[["ds"]], train_df["y"])
-
-        # Get the recorded losses
-        losses = estimator.losses_
-
-        # Check that losses have been recorded
-        self.assertTrue(len(losses) > 0, "No losses recorded during training.")
-
-        # Check that the loss decreases over time
-        initial_loss = losses[0]
-        final_loss = losses[-1]
-        self.assertLess(
-            final_loss, initial_loss, "Final loss is not less than initial loss."
-        )
-
-        # Check that the losses are decreasing monotonically (not required but useful)
-        self.assertTrue(
-            all(x >= y for x, y in zip(losses[:10], losses[1:11])),
-            "Losses are not monotonically decreasing.",
-        )
-
-    def test_loss_decrease_gblinear(self):
         """
         Test that the training loss decreases over epochs with GBLinear trend.
         """
@@ -162,7 +76,7 @@ class TestForecast(unittest.TestCase):
         train_df = self.df.iloc[:150]
 
         # Initialize and fit the estimator
-        estimator = forecasting.Forecast(nrounds=100, trend_type="GBLinear")
+        estimator = forecasting.Forecast(nrounds=100)
         estimator.fit(train_df[["ds"]], train_df["y"])
 
         # Get the recorded losses
@@ -186,45 +100,13 @@ class TestForecast(unittest.TestCase):
 
     def test_loss_decrease_lgbm(self):
         """
-        Test that the training loss decreases over epochs.
-        """
-        # Use only the training data
-        train_df = self.df.iloc[:150]
-
-        # Initialize and fit the estimator
-        estimator = forecasting.Forecast(nrounds=100, module_type="LGBModule")
-        estimator.fit(train_df[["ds"]], train_df["y"])
-
-        # Get the recorded losses
-        losses = estimator.losses_
-
-        # Check that losses have been recorded
-        self.assertTrue(len(losses) > 0, "No losses recorded during training.")
-
-        # Check that the loss decreases over time
-        initial_loss = losses[0]
-        final_loss = losses[-1]
-        self.assertLess(
-            final_loss, initial_loss, "Final loss is not less than initial loss."
-        )
-
-        # Check that the losses are decreasing monotonically (not required but useful)
-        self.assertTrue(
-            all(x >= y for x, y in zip(losses[:10], losses[1:11])),
-            "Losses are not monotonically decreasing.",
-        )
-
-    def test_loss_decrease_lgbm_gblinear(self):
-        """
         Test that the training loss decreases over epochs with LGBModule and GBLinear trend.
         """
         # Use only the training data
         train_df = self.df.iloc[:150]
 
         # Initialize and fit the estimator
-        estimator = forecasting.Forecast(
-            nrounds=100, module_type="LGBModule", trend_type="GBLinear"
-        )
+        estimator = forecasting.Forecast(nrounds=100, module_type="LGBModule")
         estimator.fit(train_df[["ds"]], train_df["y"])
 
         # Get the recorded losses
