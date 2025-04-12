@@ -27,24 +27,32 @@ def loadModule(module):
 
 class Forecast(BaseEstimator, RegressorMixin):
     """
-    A forecasting model class that implements a trend + seasonality
+    A forecasting model class that implements a trend + seasonality + changepoints
     model using either XGBModule or LGBModule (but defaulting to XGBModule).
 
     Parameters
     ----------
-    nrounds : int, default=500
-        Number of training iterations (epochs) for the model. Overfitting seems to
-        be fine usually.
+    nrounds : int, default=50
+        Number of training iterations (epochs) for the model.
     params : dict, optional
         Dictionary of additional parameters to be passed to the underlying forecast model.
+        Defaults to {"eta": 0.17, "max_depth": 3, "lambda": 1, "alpha": 8}
     module_type : str, default="XGBModule"
         Type of gradient boosting module to use, either "XGBModule" or "LGBModule".
-    trend_type : str, default="PyTorch"
-        Type of trend component to use. Can be either "PyTorch" for a PyTorch linear layer
-        or "GBLinear" for a gradient boosting linear layer.
     linear_params : dict, default={}
-        Parameters to pass to GBLinear if trend_type="GBLinear". Ignored if trend_type="PyTorch".
-        See gbnet.gblinear.GBLinear for available parameters.
+        Parameters to pass to GBLinear.
+        Defaults to {"min_hess": 0.0, "lambd": 0.1, "lr": 0.9}
+    changepoint_params : dict, default={}
+        Parameters for changepoint detection and modeling. Defaults to:
+        {
+            "n_changepoints": 32,  # how many changepoints to consider
+            "eta": 0.9,
+            "max_depth": 9,
+            "lambda": 6.5,
+            "alpha": 3.8,
+            "cp_gap": 0.5,  # portion of time series allowing changepoints
+            "cp_train_gap": 4  # how many training rounds to NOT update the periodic component
+        }
 
     Attributes
     ----------
@@ -52,7 +60,7 @@ class Forecast(BaseEstimator, RegressorMixin):
         Number of training rounds for the model.
     params : dict
         Additional parameters passed to the forecast model.
-    model_ : NSForecastModule or None
+    model_ : ForecastModule or None
         Trained forecast model instance. Set after fitting.
     losses_ : list
         List of loss values recorded at each training iteration.
@@ -62,14 +70,15 @@ class Forecast(BaseEstimator, RegressorMixin):
     fit(X, y)
         Trains the forecast model using the input features X and target variable y.
         X must contain the datetime column 'ds'.
-    predict(X)
+    predict(X, components=False)
         Predicts target values based on the input features X.
+        If components=True, returns tuple of (trend, periodic, changepoint) components.
 
     Notes
     -----
-    The model uses a linear trend + a periodic function via XGBModule or LGBModule. The
-    loss function used is Mean Squared Error (MSE). The trend component can use either
-    standard PyTorch optimization or gradient boosting updates via GBLinear.
+    The model uses a linear trend + periodic function + changepoints via XGBModule or LGBModule.
+    The loss function used is Mean Squared Error (MSE). The trend component uses GBLinear.
+    Changepoints allow the model to capture changes in the time series trend.
     """
 
     def __init__(
@@ -144,9 +153,9 @@ class Forecast(BaseEstimator, RegressorMixin):
 class ForecastModule(torch.nn.Module):
     """PyTorch module for time series forecasting.
 
-    This module combines a linear trend component with a periodic function learned through
-    gradient boosting to model time series data. The trend is modeled using either a PyTorch
-    linear layer or GBLinear layer, while the periodic patterns are captured by either
+    This module combines a linear trend component with a periodic function and changepoints
+    learned through gradient boosting to model time series data. The trend is modeled using
+    GBLinear layer, while the periodic patterns and changepoints are captured by either
     XGBoost or LightGBM.
 
     Parameters
@@ -159,9 +168,17 @@ class ForecastModule(torch.nn.Module):
         Type of gradient boosting module to use, either "XGBModule" or "LGBModule".
         Defaults to "XGBModule".
     trend_type : str, optional
-        Type of trend model to use, either "PyTorch" or "GBLinear". Defaults to "PyTorch".
+        Type of trend model to use, either "PyTorch" or "GBLinear". Defaults to "GBLinear".
     linear_params : dict, optional
         Parameters passed to GBLinear trend model if trend_type="GBLinear". Defaults to {}.
+    changepoint_params : dict, optional
+        Parameters for changepoint detection and modeling. Defaults to:
+        {
+            "n_changepoints": 100,
+            "gbmodule": "XGBModule",
+            "cp_gap": 0.9,
+            "cp_train_gap": 10
+        }
 
     Attributes
     ----------
@@ -171,6 +188,8 @@ class ForecastModule(torch.nn.Module):
         Batch normalization layer (only used with PyTorch trend)
     periodic_fn : XGBModule or LGBModule
         Gradient boosting module for modeling periodic patterns
+    trend_fn : XGBModule or LGBModule
+        Gradient boosting module for modeling changepoints
     initialized : bool
         Whether the model has been initialized with initial trend estimates
     trend_type : str
@@ -180,8 +199,10 @@ class ForecastModule(torch.nn.Module):
     -------
     initialize(df)
         Initializes trend parameters using least squares regression
-    forward(df)
-        Forward pass combining trend and periodic components
+    forward(df, components=False)
+        Forward pass combining trend, periodic, and changepoint components
+    gb_step()
+        Performs one gradient boosting step for all components
     """
 
     def __init__(
@@ -189,7 +210,7 @@ class ForecastModule(torch.nn.Module):
         n,
         params=None,
         module_type="XGBModule",
-        trend_type="PyTorch",
+        trend_type="GBLinear",
         linear_params={},
         changepoint_params={},
     ):
