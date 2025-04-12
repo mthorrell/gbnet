@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="gbnet",
-    version="0.3.0",
+    version="0.4.0",
     author="Michael Horrell",
     author_email="mthorrell@github.com",
     description="Gradient boosting libraries integrated with pytorch",
