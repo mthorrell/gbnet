@@ -126,12 +126,18 @@ class Forecast(BaseEstimator, RegressorMixin):
         )
         self.model_.train()
         optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.01)
-        mse = torch.nn.MSELoss()
+        # mse = torch.nn.MSELoss()
+        loss_fn = torch.nn.GaussianNLLLoss()
 
         for _ in range(self.nrounds):
             optimizer.zero_grad()
-            preds = self.model_(df)
-            loss = mse(preds.flatten(), torch.Tensor(df["y"].values).flatten())
+            preds, log_vars = self.model_(df)
+            # loss = mse(preds.flatten(), torch.Tensor(df["y"].values).flatten())
+            loss = loss_fn(
+                preds.flatten(),
+                torch.Tensor(df["y"].values).flatten(),
+                torch.exp(log_vars).flatten(),
+            )
             loss.backward(create_graph=True)
             self.losses_.append(loss.detach().item())
             self.model_.gb_step()
@@ -139,15 +145,17 @@ class Forecast(BaseEstimator, RegressorMixin):
         self.model_.eval()
         return self
 
-    def predict(self, X, components=False):
+    def predict(self, X, components=False, uncertainty=False):
         check_is_fitted(self, "model_")
         df = X.copy()
         if components:
             t, p, c = self.model_(df, components=True)
             return t, p, c
 
-        preds = self.model_(df).detach().numpy()
-        return preds.flatten()
+        preds, log_vars = self.model_(df)
+        if uncertainty:
+            return preds.detach().numpy().flatten(), log_vars.detach().numpy().flatten()
+        return preds.detach().numpy().flatten()
 
 
 class ForecastModule(torch.nn.Module):
@@ -230,7 +238,7 @@ class ForecastModule(torch.nn.Module):
         self.periodic_fn = GBModule(
             batch_size=n,
             input_dim=6,  # year, month, day, hour, minute, weekday
-            output_dim=1,
+            output_dim=2,  # prediction, log_var
             params=params,
         )
 
@@ -342,11 +350,12 @@ class ForecastModule(torch.nn.Module):
 
         gb_trend = self.forward_changepoints(df)
 
-        forecast = trend_component + self.periodic_fn(X) + gb_trend
+        pf = self.periodic_fn(X)
+        forecast = trend_component + pf[:, 0:1] + gb_trend
         if components:
-            return trend_component, self.periodic_fn(X), gb_trend
+            return trend_component, pf[:, 0:1], gb_trend
 
-        return forecast
+        return forecast, pf[:, 1:2]
 
     def forward_changepoints(self, df):
         slope_adjustments = self.trend_fn(self.cp_input)
