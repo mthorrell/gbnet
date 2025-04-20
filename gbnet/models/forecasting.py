@@ -53,6 +53,8 @@ class Forecast(BaseEstimator, RegressorMixin):
             "cp_gap": 0.5,  # portion of time series allowing changepoints
             "cp_train_gap": 4  # how many training rounds to NOT update the periodic component
         }
+    uncertainty : bool, default=False
+        Whether to fit uncertainty estimates using a separate model after fitting the mean predictions.
 
     Attributes
     ----------
@@ -64,6 +66,10 @@ class Forecast(BaseEstimator, RegressorMixin):
         Trained forecast model instance. Set after fitting.
     losses_ : list
         List of loss values recorded at each training iteration.
+    uncertainty_model_ : ForecastModule or None
+        Trained uncertainty model instance. Set after fitting if uncertainty=True.
+    uncertainty_losses_ : list
+        List of loss values recorded during uncertainty model training.
 
     Methods
     -------
@@ -88,17 +94,21 @@ class Forecast(BaseEstimator, RegressorMixin):
         module_type="XGBModule",
         linear_params={},
         changepoint_params={},
+        uncertainty=False,
     ):
         self.nrounds = nrounds
         self.model_ = None
+        self.uncertainty_model_ = None
         self.losses_ = []
+        self.uncertainty_losses_ = []
         self.module_type = module_type
         self.trend_type = "GBLinear"
+        self.uncertainty = uncertainty
 
         self.params = {"eta": 0.17, "max_depth": 3, "lambda": 1, "alpha": 8}
         self.params.update(params)
 
-        self.linear_params = {"min_hess": 0.0, "lambd": 0.1, "lr": 0.9}
+        self.linear_params = {"min_hess": 0.1, "lambd": 0.1, "lr": 0.9}
         self.linear_params.update(linear_params)
 
         self.changepoint_params = {
@@ -116,6 +126,7 @@ class Forecast(BaseEstimator, RegressorMixin):
         df = X.copy()
         df["y"] = y
 
+        # Step 1: Fit mean predictions using MSE
         self.model_ = ForecastModule(
             df.shape[0],
             params=self.params,
@@ -126,34 +137,64 @@ class Forecast(BaseEstimator, RegressorMixin):
         )
         self.model_.train()
         optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.01)
-        # mse = torch.nn.MSELoss()
-        loss_fn = torch.nn.GaussianNLLLoss()
+        mse_loss = torch.nn.MSELoss()
 
         for _ in range(self.nrounds):
             optimizer.zero_grad()
-            preds, log_vars = self.model_(df)
-            # loss = mse(preds.flatten(), torch.Tensor(df["y"].values).flatten())
-            loss = loss_fn(
-                preds.flatten(),
-                torch.Tensor(df["y"].values).flatten(),
-                torch.exp(log_vars).flatten(),
-            )
+            preds = self.model_(df)
+            loss = mse_loss(preds.flatten(), torch.Tensor(df["y"].values).flatten())
             loss.backward(create_graph=True)
             self.losses_.append(loss.detach().item())
             self.model_.gb_step()
 
         self.model_.eval()
+
+        # Step 2: If uncertainty requested, fit uncertainty model using GaussianNLLLoss
+        if self.uncertainty:
+            GBModule = loadModule(self.module_type)
+            uc_params = self.params.copy()
+
+            self.uncertainty_model_ = GBModule(
+                df.shape[0], input_dim=1, output_dim=1, params=uc_params, min_hess=2
+            )
+            self.uncertainty_model_.train()
+            optimizer = torch.optim.Adam(self.uncertainty_model_.parameters(), lr=0.01)
+            gaussian_loss = torch.nn.GaussianNLLLoss()
+
+            # Get mean predictions from first model
+            with torch.no_grad():
+                mean_preds = self.model_(df)
+
+            udf = df.copy()
+            udf["x"] = pd_datetime_to_seconds(udf["ds"])
+            udf["y"] = np.log(udf["y"].std())
+
+            for _ in range(self.nrounds * 2):
+                optimizer.zero_grad()
+                log_vars = self.uncertainty_model_(udf[["x"]])
+                loss = gaussian_loss(
+                    mean_preds.flatten(),
+                    torch.Tensor(df["y"].values).flatten(),
+                    torch.exp(log_vars).flatten(),
+                )
+                loss.backward(create_graph=True)
+                self.uncertainty_losses_.append(loss.detach().item())
+                self.uncertainty_model_.gb_step()
+
+            self.uncertainty_model_.eval()
+
         return self
 
     def predict(self, X, components=False, uncertainty=False):
         check_is_fitted(self, "model_")
         df = X.copy()
         if components:
-            t, p, c = self.model_(df, components=True)
-            return t, p, c
+            return self.model_(df, components=True)
 
-        preds, log_vars = self.model_(df)
-        if uncertainty:
+        preds = self.model_(df)
+        if uncertainty and self.uncertainty:
+            df["x"] = pd_datetime_to_seconds(df["ds"])
+            log_vars = self.uncertainty_model_(df[["x"]])
             return preds.detach().numpy().flatten(), log_vars.detach().numpy().flatten()
         return preds.detach().numpy().flatten()
 
@@ -208,7 +249,8 @@ class ForecastModule(torch.nn.Module):
     initialize(df)
         Initializes trend parameters using least squares regression
     forward(df, components=False)
-        Forward pass combining trend, periodic, and changepoint components
+        Forward pass combining trend, periodic, and changepoint components.
+        If components=True, returns tuple of (trend, periodic, changepoint) components.
     gb_step()
         Performs one gradient boosting step for all components
     """
@@ -238,7 +280,7 @@ class ForecastModule(torch.nn.Module):
         self.periodic_fn = GBModule(
             batch_size=n,
             input_dim=6,  # year, month, day, hour, minute, weekday
-            output_dim=2,  # prediction, log_var
+            output_dim=1,  # prediction only
             params=params,
         )
 
@@ -284,7 +326,6 @@ class ForecastModule(torch.nn.Module):
 
         X["intercept"] = 1
         ests = lstsq(X[["intercept", "numeric_dt"]], X[["y"]])[0]
-
         with torch.no_grad():
             self.trend.linear.weight.copy_(torch.Tensor(ests[1:, :]))
             self.trend.linear.bias.copy_(torch.Tensor(ests[0]))
@@ -351,11 +392,11 @@ class ForecastModule(torch.nn.Module):
         gb_trend = self.forward_changepoints(df)
 
         pf = self.periodic_fn(X)
-        forecast = trend_component + pf[:, 0:1] + gb_trend
+        forecast = trend_component + pf + gb_trend
         if components:
-            return trend_component, pf[:, 0:1], gb_trend
+            return trend_component, pf, gb_trend
 
-        return forecast, pf[:, 1:2]
+        return forecast
 
     def forward_changepoints(self, df):
         slope_adjustments = self.trend_fn(self.cp_input)
