@@ -25,6 +25,45 @@ def loadModule(module):
         return lgbmodule.LGBModule
 
 
+def calculate_linear_regression_uncertainty(train_df, test_df):
+    """
+    Calculate the uncertainty from linear regression for test points.
+
+    Parameters
+    ----------
+    train_df : pd.DataFrame
+        Training data with 'ds' and 'y' columns
+    test_df : pd.DataFrame
+        Test data with 'ds' column
+
+    Returns
+    -------
+    torch.Tensor
+        Linear regression variance estimates for each test point
+    """
+    # Calculate standard error of regression coefficients
+    X_train = np.column_stack(
+        [np.ones(len(train_df)), pd_datetime_to_seconds(train_df["ds"])]
+    )
+    y_train = train_df["y"].values
+    n = len(y_train)
+    p = 2  # number of parameters (intercept and slope)
+
+    # Calculate residuals
+    beta = np.linalg.lstsq(X_train, y_train, rcond=None)[0]
+    y_pred = X_train @ beta
+    residuals = y_train - y_pred
+    sigma2 = np.sum(residuals**2) / (n - p)
+
+    # Calculate standard error of prediction
+    X_test = np.column_stack(
+        [np.ones(len(test_df)), pd_datetime_to_seconds(test_df["ds"])]
+    )
+    XtX_inv = np.linalg.inv(X_train.T @ X_train)
+    var_pred = sigma2 * (1 + np.diag(X_test @ XtX_inv @ X_test.T))
+    return torch.tensor(var_pred, dtype=torch.float32)
+
+
 class Forecast(BaseEstimator, RegressorMixin):
     """
     A forecasting model class that implements a trend + seasonality + changepoints
@@ -70,6 +109,8 @@ class Forecast(BaseEstimator, RegressorMixin):
         Trained uncertainty model instance. Set after fitting if uncertainty=True.
     uncertainty_losses_ : list
         List of loss values recorded during uncertainty model training.
+    linear_var_ : torch.Tensor or None
+        Linear regression variance estimates for test points. Set after fitting if uncertainty=True.
 
     Methods
     -------
@@ -104,6 +145,7 @@ class Forecast(BaseEstimator, RegressorMixin):
         self.module_type = module_type
         self.trend_type = "GBLinear"
         self.uncertainty = uncertainty
+        self.linear_var_ = None  # Store linear regression variance estimates
 
         self.params = {"eta": 0.17, "max_depth": 3, "lambda": 1, "alpha": 8}
         self.params.update(params)
@@ -151,6 +193,10 @@ class Forecast(BaseEstimator, RegressorMixin):
 
         # Step 2: If uncertainty requested, fit uncertainty model using GaussianNLLLoss
         if self.uncertainty:
+            self.train_df = df.copy()
+            # Calculate linear regression variance estimates
+            linear_var = calculate_linear_regression_uncertainty(df, df)
+
             GBModule = loadModule(self.module_type)
             uc_params = self.params.copy()
 
@@ -172,10 +218,12 @@ class Forecast(BaseEstimator, RegressorMixin):
             for _ in range(self.nrounds * 2):
                 optimizer.zero_grad()
                 log_vars = self.uncertainty_model_(udf[["x"]])
+                # Add linear regression variance to the uncertainty model's variance
+                total_var = torch.exp(log_vars) + linear_var.reshape(-1, 1)
                 loss = gaussian_loss(
                     mean_preds.flatten(),
                     torch.Tensor(df["y"].values).flatten(),
-                    torch.exp(log_vars).flatten(),
+                    total_var.flatten(),
                 )
                 loss.backward(create_graph=True)
                 self.uncertainty_losses_.append(loss.detach().item())
@@ -195,7 +243,16 @@ class Forecast(BaseEstimator, RegressorMixin):
         if uncertainty and self.uncertainty:
             df["x"] = pd_datetime_to_seconds(df["ds"])
             log_vars = self.uncertainty_model_(df[["x"]])
-            return preds.detach().numpy().flatten(), log_vars.detach().numpy().flatten()
+
+            # Calculate linear regression uncertainty for test points
+            linear_var = calculate_linear_regression_uncertainty(self.train_df, df)
+
+            # Combine uncertainties by adding variances
+            total_var = torch.exp(log_vars) + linear_var.reshape(-1, 1)
+            return preds.detach().numpy().flatten(), torch.log(
+                total_var
+            ).detach().numpy().flatten()
+
         return preds.detach().numpy().flatten()
 
 
