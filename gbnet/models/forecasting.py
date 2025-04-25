@@ -25,9 +25,13 @@ def loadModule(module):
         return lgbmodule.LGBModule
 
 
+var_fudge = 1 / 2
+
+
 def calculate_linear_regression_uncertainty(train_df, test_df):
     """
     Calculate the uncertainty from linear regression for test points.
+    Optimized version that pre-calculates and caches intermediate results.
 
     Parameters
     ----------
@@ -41,26 +45,30 @@ def calculate_linear_regression_uncertainty(train_df, test_df):
     torch.Tensor
         Linear regression variance estimates for each test point
     """
-    # Calculate standard error of regression coefficients
+    # Pre-calculate X matrices
     X_train = np.column_stack(
         [np.ones(len(train_df)), pd_datetime_to_seconds(train_df["ds"])]
     )
-    y_train = train_df["y"].values
-    n = len(y_train)
-    p = 2  # number of parameters (intercept and slope)
-
-    # Calculate residuals
-    beta = np.linalg.lstsq(X_train, y_train, rcond=None)[0]
-    y_pred = X_train @ beta
-    residuals = y_train - y_pred
-    sigma2 = np.sum(residuals**2) / (n - p)
-
-    # Calculate standard error of prediction
     X_test = np.column_stack(
         [np.ones(len(test_df)), pd_datetime_to_seconds(test_df["ds"])]
     )
+
+    # Calculate regression coefficients
+    y_train = train_df["y"].values
+    beta = np.linalg.lstsq(X_train, y_train, rcond=None)[0]
+
+    # Calculate residuals and sigma2
+    y_pred = X_train @ beta
+    residuals = y_train - y_pred
+    n = len(y_train)
+    p = 2  # number of parameters (intercept and slope)
+    sigma2 = np.sum(residuals**2) / (n - p)
+
+    # Pre-calculate XtX_inv
     XtX_inv = np.linalg.inv(X_train.T @ X_train)
-    var_pred = sigma2 * (1 + np.diag(X_test @ XtX_inv @ X_test.T))
+
+    # Calculate prediction variance
+    var_pred = sigma2 * (1 + np.diag(X_test @ XtX_inv @ X_test.T)) * var_fudge
     return torch.tensor(var_pred, dtype=torch.float32)
 
 
@@ -146,6 +154,7 @@ class Forecast(BaseEstimator, RegressorMixin):
         self.trend_type = "GBLinear"
         self.uncertainty = uncertainty
         self.linear_var_ = None  # Store linear regression variance estimates
+        self.train_df = None  # Store training data for uncertainty calculation
 
         self.params = {"eta": 0.17, "max_depth": 3, "lambda": 1, "alpha": 8}
         self.params.update(params)
@@ -167,6 +176,11 @@ class Forecast(BaseEstimator, RegressorMixin):
     def fit(self, X, y=None):
         df = X.copy()
         df["y"] = y
+        self.train_df = df.copy()  # Store training data
+
+        # Pre-calculate linear regression uncertainty if needed
+        if self.uncertainty:
+            self.linear_var_ = calculate_linear_regression_uncertainty(df, df)
 
         # Step 1: Fit mean predictions using MSE
         self.model_ = ForecastModule(
@@ -193,10 +207,6 @@ class Forecast(BaseEstimator, RegressorMixin):
 
         # Step 2: If uncertainty requested, fit uncertainty model using GaussianNLLLoss
         if self.uncertainty:
-            self.train_df = df.copy()
-            # Calculate linear regression variance estimates
-            linear_var = calculate_linear_regression_uncertainty(df, df)
-
             GBModule = loadModule(self.module_type)
             uc_params = self.params.copy()
 
@@ -218,8 +228,8 @@ class Forecast(BaseEstimator, RegressorMixin):
             for _ in range(self.nrounds * 2):
                 optimizer.zero_grad()
                 log_vars = self.uncertainty_model_(udf[["x"]])
-                # Add linear regression variance to the uncertainty model's variance
-                total_var = torch.exp(log_vars) + linear_var.reshape(-1, 1)
+                # Use pre-calculated linear regression variance
+                total_var = torch.exp(log_vars) + self.linear_var_.reshape(-1, 1)
                 loss = gaussian_loss(
                     mean_preds.flatten(),
                     torch.Tensor(df["y"].values).flatten(),
@@ -244,7 +254,7 @@ class Forecast(BaseEstimator, RegressorMixin):
             df["x"] = pd_datetime_to_seconds(df["ds"])
             log_vars = self.uncertainty_model_(df[["x"]])
 
-            # Calculate linear regression uncertainty for test points
+            # Calculate linear regression uncertainty for test points using stored training data
             linear_var = calculate_linear_regression_uncertainty(self.train_df, df)
 
             # Combine uncertainties by adding variances
