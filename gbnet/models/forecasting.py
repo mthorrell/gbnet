@@ -53,6 +53,8 @@ class Forecast(BaseEstimator, RegressorMixin):
             "cp_gap": 0.5,  # portion of time series allowing changepoints
             "cp_train_gap": 4  # how many training rounds to NOT update the periodic component
         }
+    estimate_uncertainty : bool, default=False
+        Whether to estimate uncertainty parameters during fitting.
 
     Attributes
     ----------
@@ -64,6 +66,10 @@ class Forecast(BaseEstimator, RegressorMixin):
         Trained forecast model instance. Set after fitting.
     losses_ : list
         List of loss values recorded at each training iteration.
+    sigma2_ : float or None
+        Base variance of model residuals. Only set if estimate_uncertainty=True.
+    gamma_ : float or None
+        Rate of uncertainty growth with forecast horizon. Only set if estimate_uncertainty=True.
 
     Methods
     -------
@@ -73,12 +79,8 @@ class Forecast(BaseEstimator, RegressorMixin):
     predict(X, components=False)
         Predicts target values based on the input features X.
         If components=True, returns tuple of (trend, periodic, changepoint) components.
-
-    Notes
-    -----
-    The model uses a linear trend + periodic function + changepoints via XGBModule or LGBModule.
-    The loss function used is Mean Squared Error (MSE). The trend component uses GBLinear.
-    Changepoints allow the model to capture changes in the time series trend.
+    predict_with_uncertainty(X, confidence=0.95)
+        Makes predictions with uncertainty intervals. Only available if estimate_uncertainty=True.
     """
 
     def __init__(
@@ -88,12 +90,16 @@ class Forecast(BaseEstimator, RegressorMixin):
         module_type="XGBModule",
         linear_params={},
         changepoint_params={},
+        estimate_uncertainty=False,
     ):
         self.nrounds = nrounds
         self.model_ = None
         self.losses_ = []
         self.module_type = module_type
         self.trend_type = "GBLinear"
+        self.sigma2_ = None
+        self.gamma_ = None
+        self.estimate_uncertainty = estimate_uncertainty
 
         self.params = {"eta": 0.17, "max_depth": 3, "lambda": 1, "alpha": 8}
         self.params.update(params)
@@ -116,6 +122,65 @@ class Forecast(BaseEstimator, RegressorMixin):
         df = X.copy()
         df["y"] = y
 
+        # If estimating uncertainty, split data into two halves
+        if self.estimate_uncertainty:
+            n = len(df)
+            mid = n // 2
+            df_train = df.iloc[:mid].copy()
+            df_val = df.iloc[mid:].copy()
+
+            # Train model on first half
+            self.model_ = ForecastModule(
+                df_train.shape[0],
+                params=self.params,
+                module_type=self.module_type,
+                trend_type=self.trend_type,
+                linear_params=self.linear_params,
+                changepoint_params=self.changepoint_params,
+            )
+            self.model_.train()
+            optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.01)
+            mse = torch.nn.MSELoss()
+
+            for _ in range(self.nrounds):
+                optimizer.zero_grad()
+                preds = self.model_(df_train)
+                loss = mse(
+                    preds.flatten(), torch.Tensor(df_train["y"].values).flatten()
+                )
+                loss.backward(create_graph=True)
+                self.losses_.append(loss.detach().item())
+                self.model_.gb_step()
+
+            # Get predictions for validation set
+            self.model_.eval()
+            y_pred = self.predict(df_val)
+
+            # Calculate squared errors and forecast horizons
+            squared_errors = (df_val["y"].values - y_pred) ** 2
+            forecast_horizons = (
+                df_val["ds"] - df_train["ds"].max()
+            ).dt.total_seconds() / (24 * 3600)  # in days
+
+            # Estimate sigma2 from validation residuals
+            self.sigma2_ = np.mean(squared_errors)
+
+            # Estimate gamma by maximizing Gaussian log likelihood
+            from scipy.optimize import minimize
+
+            def neg_log_likelihood(gamma):
+                variances = self.sigma2_ + gamma * forecast_horizons
+                return 0.5 * np.sum(np.log(variances) + squared_errors / variances)
+
+            # Optimize gamma
+            result = minimize(neg_log_likelihood, x0=0.1, bounds=[(0, None)])
+            self.gamma_ = result.x[0]
+
+            # Now train on full dataset
+            df = X.copy()
+            df["y"] = y
+
+        # Train model on full dataset
         self.model_ = ForecastModule(
             df.shape[0],
             params=self.params,
@@ -148,6 +213,49 @@ class Forecast(BaseEstimator, RegressorMixin):
 
         preds = self.model_(df).detach().numpy()
         return preds.flatten()
+
+    def predict_with_uncertainty(self, X, confidence=0.95):
+        """Make predictions with uncertainty intervals.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Data to predict on, must have 'ds' column
+        confidence : float, default=0.95
+            Confidence level for uncertainty intervals (0 to 1)
+
+        Returns
+        -------
+        predictions : array-like
+            Point predictions
+        lower : array-like
+            Lower bound of confidence interval
+        upper : array-like
+            Upper bound of confidence interval
+        """
+        check_is_fitted(self, "model_")
+        if not self.estimate_uncertainty:
+            raise ValueError(
+                "Uncertainty parameters not estimated. Set estimate_uncertainty=True in __init__."
+            )
+
+        # Get point predictions
+        predictions = self.predict(X)
+
+        # Calculate forecast horizons
+        forecast_horizons = (X["ds"] - X["ds"].min()).dt.total_seconds() / (
+            24 * 3600
+        )  # in days
+
+        # Calculate uncertainties
+        uncertainties = np.sqrt(self.sigma2_ + self.gamma_ * forecast_horizons)
+
+        # Calculate confidence intervals
+        z_score = 1.96  # for 95% confidence
+        lower = predictions - z_score * uncertainties
+        upper = predictions + z_score * uncertainties
+
+        return predictions, lower, upper
 
 
 class ForecastModule(torch.nn.Module):
