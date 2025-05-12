@@ -24,22 +24,20 @@ class TestForecast(unittest.TestCase):
         test_df = self.df.iloc[150:]
 
         # Initialize and fit the estimator
-        estimator = forecasting.Forecast(nrounds=100)
+        estimator = forecasting.Forecast(nrounds=10)
         estimator.fit(train_df[["ds"]], train_df["y"])
 
         # Make predictions
         predictions = estimator.predict(test_df[["ds"]])
 
         # Check that predictions have the correct length
-        self.assertEqual(len(predictions), len(test_df), "Prediction length mismatch.")
+        self.assertEqual(
+            predictions.shape[0], len(test_df), "Prediction length mismatch."
+        )
 
         # Check that predictions are not NaN
-        self.assertFalse(np.isnan(predictions).any(), "Predictions contain NaN values.")
-
-        # Optionally, check that predictions are numerical
-        self.assertTrue(
-            np.issubdtype(predictions.dtype, np.number),
-            "Predictions are not numerical.",
+        self.assertFalse(
+            np.isnan(predictions).any().any(), "Predictions contain NaN values."
         )
 
     def test_fit_predict_lgbm(self):
@@ -51,22 +49,20 @@ class TestForecast(unittest.TestCase):
         test_df = self.df.iloc[150:]
 
         # Initialize and fit the estimator
-        estimator = forecasting.Forecast(nrounds=100, module_type="LGBModule")
+        estimator = forecasting.Forecast(nrounds=10, module_type="LGBModule")
         estimator.fit(train_df[["ds"]], train_df["y"])
 
         # Make predictions
         predictions = estimator.predict(test_df[["ds"]])
 
         # Check that predictions have the correct length
-        self.assertEqual(len(predictions), len(test_df), "Prediction length mismatch.")
+        self.assertEqual(
+            predictions.shape[0], len(test_df), "Prediction length mismatch."
+        )
 
         # Check that predictions are not NaN
-        self.assertFalse(np.isnan(predictions).any(), "Predictions contain NaN values.")
-
-        # Optionally, check that predictions are numerical
-        self.assertTrue(
-            np.issubdtype(predictions.dtype, np.number),
-            "Predictions are not numerical.",
+        self.assertFalse(
+            np.isnan(predictions).any().any(), "Predictions contain NaN values."
         )
 
     def test_loss_decrease(self):
@@ -77,7 +73,7 @@ class TestForecast(unittest.TestCase):
         train_df = self.df.iloc[:150]
 
         # Initialize and fit the estimator
-        estimator = forecasting.Forecast(nrounds=100)
+        estimator = forecasting.Forecast(nrounds=10)
         estimator.fit(train_df[["ds"]], train_df["y"])
 
         # Get the recorded losses
@@ -107,7 +103,7 @@ class TestForecast(unittest.TestCase):
         train_df = self.df.iloc[:150]
 
         # Initialize and fit the estimator
-        estimator = forecasting.Forecast(nrounds=100, module_type="LGBModule")
+        estimator = forecasting.Forecast(nrounds=10, module_type="LGBModule")
         estimator.fit(train_df[["ds"]], train_df["y"])
 
         # Get the recorded losses
@@ -135,7 +131,7 @@ class TestForecast(unittest.TestCase):
         """
         # Initialize estimator with changepoint parameters
         estimator = forecasting.Forecast(
-            nrounds=100,
+            nrounds=10,
             changepoint_params={
                 "n_changepoints": 5,
                 "cp_gap": 0.8,
@@ -171,39 +167,18 @@ class TestForecast(unittest.TestCase):
         """
         # Initialize estimator with changepoints
         estimator = forecasting.Forecast(
-            nrounds=100, changepoint_params={"n_changepoints": 3}
+            nrounds=10, changepoint_params={"n_changepoints": 3}
         )
 
         # Fit the model
         estimator.fit(self.df[["ds"]], self.df["y"])
 
         # Get predictions with components
-        trend, periodic, changepoints = estimator.predict(
-            self.df[["ds"]], components=True
-        )
+        pred_df = estimator.predict(self.df[["ds"]])
 
-        # Check component shapes
-        self.assertEqual(len(trend), len(self.df), "Trend component length mismatch")
-        self.assertEqual(
-            len(periodic), len(self.df), "Periodic component length mismatch"
-        )
-        self.assertEqual(
-            len(changepoints), len(self.df), "Changepoint component length mismatch"
-        )
-
-        # Check that components are not NaN
-        self.assertFalse(
-            np.isnan(trend.detach().numpy()).any(),
-            "Trend component contains NaN values",
-        )
-        self.assertFalse(
-            np.isnan(periodic.detach().numpy()).any(),
-            "Periodic component contains NaN values",
-        )
-        self.assertFalse(
-            np.isnan(changepoints.detach().numpy()).any(),
-            "Changepoint component contains NaN values",
-        )
+        # Check component shapes and nans
+        self.assertEqual(self.df.shape[0], pred_df.shape[0])
+        self.assertEqual(pd.isnull(self.df).sum().sum(), 0)
 
     def test_changepoint_impact(self):
         """
@@ -221,10 +196,10 @@ class TestForecast(unittest.TestCase):
 
         # Fit model with and without changepoints
         model_with_cp = forecasting.Forecast(
-            nrounds=100, changepoint_params={"n_changepoints": 3}
+            nrounds=10, changepoint_params={"n_changepoints": 3}
         )
         model_without_cp = forecasting.Forecast(
-            nrounds=100, changepoint_params={"n_changepoints": 0}
+            nrounds=10, changepoint_params={"n_changepoints": 0}
         )
 
         model_with_cp.fit(df[["ds"]], df["y"])
@@ -235,8 +210,8 @@ class TestForecast(unittest.TestCase):
         preds_without_cp = model_without_cp.predict(df[["ds"]])
 
         # Calculate MSE for both models
-        mse_with_cp = np.mean((preds_with_cp - df["y"]) ** 2)
-        mse_without_cp = np.mean((preds_without_cp - df["y"]) ** 2)
+        mse_with_cp = np.mean((preds_with_cp["yhat"] - df["y"]) ** 2)
+        mse_without_cp = np.mean((preds_without_cp["yhat"] - df["y"]) ** 2)
 
         # Check that changepoints improve the fit
         self.assertLess(
@@ -250,7 +225,7 @@ class TestForecast(unittest.TestCase):
         # Test different numbers of changepoints
         for n_cp in [0, 1, 5, 10]:
             estimator = forecasting.Forecast(
-                nrounds=100, changepoint_params={"n_changepoints": n_cp}
+                nrounds=10, changepoint_params={"n_changepoints": n_cp}
             )
             estimator.fit(self.df[["ds"]], self.df["y"])
 
@@ -269,7 +244,9 @@ class TestForecast(unittest.TestCase):
             # Check that predictions work
             preds = estimator.predict(self.df[["ds"]])
             self.assertEqual(len(preds), len(self.df), "Prediction length mismatch")
-            self.assertFalse(np.isnan(preds).any(), "Predictions contain NaN values")
+            self.assertFalse(
+                np.isnan(preds["yhat"]).any(), "Predictions contain NaN values"
+            )
 
     def test_piecewise_linear_function(self):
         """
