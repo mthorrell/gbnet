@@ -21,9 +21,6 @@ estimator.fit(train_df[['ds']], train_df['y'])
 
 # Make predictions
 predictions = estimator.predict(test_df[['ds']])
-
-# Add predictions to your test DataFrame
-test_df['pred'] = predictions
 ```
 
 # Ordinal Regression

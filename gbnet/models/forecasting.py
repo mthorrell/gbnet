@@ -3,6 +3,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from scipy.linalg import lstsq
+from scipy.optimize import root_scalar
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.utils.validation import check_is_fitted
 
@@ -88,6 +89,7 @@ class Forecast(BaseEstimator, RegressorMixin):
         module_type="XGBModule",
         linear_params={},
         changepoint_params={},
+        estimate_uncertainty=True,
     ):
         self.nrounds = nrounds
         self.model_ = None
@@ -111,6 +113,7 @@ class Forecast(BaseEstimator, RegressorMixin):
             "cp_train_gap": 4,
         }
         self.changepoint_params.update(changepoint_params)
+        self.estimate_uncertainty = estimate_uncertainty
 
     def fit(self, X, y=None):
         df = X.copy()
@@ -136,18 +139,48 @@ class Forecast(BaseEstimator, RegressorMixin):
             self.losses_.append(loss.detach().item())
             self.model_.gb_step()
 
+        if self.estimate_uncertainty:
+            # Main idea: uncertainty = basic sigma2 + G * (test datetime - max train datetime)
+            # G is fit using a train/validation on half the training data
+            train_residuals = df["y"] - self.model_(df).detach().numpy().flatten()
+            sigma2, G = _get_uncertainty_params(self, train_residuals, df)
+            self.sigma2 = sigma2
+            self.G = G
+            # For better scaling, self.G was estimated in years
+            self.max_train_years = (
+                pd_datetime_to_seconds(df["ds"]).max() / 60 / 60 / 24 / 365
+            )
+            self.min_train_years = (
+                pd_datetime_to_seconds(df["ds"]).min() / 60 / 60 / 24 / 365
+            )
+
         self.model_.eval()
         return self
 
-    def predict(self, X, components=False):
+    def predict(self, X):
         check_is_fitted(self, "model_")
         df = X.copy()
-        if components:
-            t, p, c = self.model_(df, components=True)
-            return t, p, c
 
-        preds = self.model_(df).detach().numpy()
-        return preds.flatten()
+        t, p, c = self.model_(df, components=True)
+        forecast = t + p + c
+        trend = t + c
+
+        df["yhat"] = forecast.detach().numpy()
+        df["trend"] = trend.detach().numpy()
+        df["season"] = p.detach().numpy()
+
+        if self.estimate_uncertainty:
+            df["years"] = pd_datetime_to_seconds(df["ds"]) / 60 / 60 / 24 / 365
+            df["high_h"] = df["years"] - self.max_train_years
+            df["low_h"] = self.min_train_years - df["years"]
+            df["h"] = df[["high_h", "low_h"]].max(axis=1)
+            df.loc[df["h"] < 0, "h"] = 0
+            df["var_est"] = self.sigma2 + self.G * df["h"]
+
+        return_cols = [
+            c for c in ["ds", "y", "yhat", "trend", "season", "var_est"] if c in df
+        ]
+        return df[return_cols].copy()
 
 
 class ForecastModule(torch.nn.Module):
@@ -413,3 +446,71 @@ def piecewise_linear_function(changepoints, timepoints):
     result = torch.sum(contributions, dim=0)  # Shape: [M]
 
     return result
+
+
+def _get_uncertainty_params(m, train_residuals, train):
+    utrain_cutoff = train["ds"].quantile(0.5)
+    utrain = (
+        train[train["ds"] <= utrain_cutoff]
+        .sort_values("ds")
+        .reset_index(drop=True)
+        .copy()
+    )
+    utest = (
+        train[train["ds"] > utrain_cutoff]
+        .sort_values("ds")
+        .reset_index(drop=True)
+        .copy()
+    )
+
+    um = Forecast(
+        nrounds=m.nrounds,
+        params=m.params,
+        module_type=m.module_type,
+        linear_params=m.linear_params,
+        changepoint_params=m.changepoint_params,
+        estimate_uncertainty=False,
+    )
+    um.fit(utrain, utrain["y"])
+    utrain["gbnet_pred"] = um.predict(utrain)["yhat"].copy()
+    utest["gbnet_pred"] = um.predict(utest)["yhat"].copy()
+
+    utrain["residual"] = utrain["y"] - utrain["gbnet_pred"]
+    utest["residual"] = utest["y"] - utest["gbnet_pred"]
+
+    try:
+        G, info = _mle_G(
+            utest["residual"],
+            pd_datetime_to_seconds(utest["ds"]) / 60 / 60 / 24 / 365
+            - pd_datetime_to_seconds(utrain["ds"]).max() / 60 / 60 / 24 / 365,
+            (utrain["residual"] ** 2).sum() / (utrain.shape[0] - 1),
+        )
+    except (
+        ValueError
+    ):  # TODO maybe we estimate sigma2 and G simultaneously? to avoid this issue?
+        G = 0.0
+
+    sigma2 = (train_residuals**2).sum() / (train.shape[0] - 1)
+
+    return sigma2, G
+
+
+def _mle_G(r, h, S2, bracket_pad=1.0):
+    """
+    MLE for G in Var(r_i)=S2 + G*h_i with known S2.
+    Returns (G_hat, diagnostics)
+    """
+    r = np.asarray(r, dtype=float)
+    h = np.asarray(h, dtype=float)
+    assert (h >= 0).all(), "h_i must be non-negative"
+
+    def score(G):
+        denom = S2 + G * h
+        output = np.sum(h * (S2 + G * h - r**2) / denom**2)
+        return output
+
+    # Find a bracket [a,b] where score(a)>0, score(b)<0
+    a = 0.0
+    b = max(np.max((r**2 - S2) / (h + 1e-12)), 1.0) + bracket_pad
+    sol = root_scalar(score, bracket=(a, b), method="brentq")
+    return sol.root, sol
