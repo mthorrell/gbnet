@@ -27,8 +27,11 @@ gbnet.gblinear module
 
 .. automodule:: gbnet.gblinear
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: __weakref__
+   :no-inherited-members:
 
 gbnet.lgbmodule module
 ----------------------

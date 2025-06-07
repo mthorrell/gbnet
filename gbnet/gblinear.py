@@ -34,18 +34,6 @@ class GBLinear(BaseGBModule):
 
     Attributes
     ----------
-    input_dim : int
-        Input feature dimension
-    output_dim : int
-        Output prediction dimension
-    min_hess : float
-        Minimum hessian threshold
-    bias : bool
-        Whether bias term is included
-    lr : float
-        Learning rate
-    lambd : float
-        L2 regularization parameter
     linear : nn.Linear
         The underlying linear layer
     FX : torch.Tensor
@@ -60,13 +48,13 @@ class GBLinear(BaseGBModule):
 
     def __init__(
         self,
-        input_dim,
-        output_dim,
-        bias=True,
-        lr=0.5,
-        min_hess=0.0,
-        lambd=0.01,
-    ):
+        input_dim: int,
+        output_dim: int,
+        bias: bool = True,
+        lr: float = 0.5,
+        min_hess: float = 0.0,
+        lambd: float = 0.01,
+    ) -> None:
         super(GBLinear, self).__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim

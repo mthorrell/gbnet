@@ -55,6 +55,7 @@ Here's a simple example of using XGBModule to mimic standard XGBoost.
    :maxdepth: 2
    :caption: Contents:
 
+   overview
    modules/forecasting
    examples/index
    api/index
