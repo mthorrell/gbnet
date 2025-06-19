@@ -73,7 +73,7 @@ Research into network architectures specifically tailored for GBMs may also hold
 
 # Software Description and Examples
 
-GBNet comprises two primary submodules:
+GBNet comprises two primary sets of submodules:
 
 - `gbnet.xgbmodule`, `gbnet.lgbmodule`, `gbnet.gblinear`: Contain PyTorch Module classes (`XGBModule`, `LGBModule` and `GBLinear`) that integrate XGBoost, LightGBM and a linear booster respectively.
 - `gbnet.models`: Includes practical implementations of models using either `XGBModule` or `LGBModule`. Currently there are two implementations. `gbnet.models.forecasting` provides a Sci-kit Learn interface [@scikit-learn] for an optimized version of the forecast model shown above. `gbnet.models.ordinal_regression` provides a Sci-kit Learn interface for Ordinal Regression.
@@ -98,13 +98,17 @@ Code for these results is [here](https://github.com/mthorrell/gbnet/blob/main/ex
 
 ## Ordinal Regression Example
 
-Ordinal regression implements a cumulative logit model with breakpoints [@mccullagh1980regression]. The breakpoints are a set of parameters that separate the different ordinal classes. In the cumulative logit model, the probability of an observation falling into a particular class is modeled as the difference between two cumulative probabilities. The breakpoints determine where these cumulative probabilities transition between classes.
+Ordinal regression fits a model with a 1-dimensional output, $F(X) \in \mathbb{R}$, that is thresholded at different points to achieve an ordinal classification. [@mccullagh1980regression] introduce a cumulative logit model with thresholds to define a consistent statistical model for ordinal regression. `gbnet.models.ordinal_regression.GBOrd` implements the cumulative logit model. Specifically `GBOrd` fits threshold parameters $\theta_i \in \mathbb{R}$ and a GBM, $F(X)$, to optimize the likelihood defined by
 
-A plot showing the fitted probabilities on the Ailerons dataset from [@gagolewski_ordinal_regression] is below. The figure illustrates how `gbnet.models.ordinal_regression.GBOrd` fits the breakpoint parameters along with the underlying GBM. The uneven spacing of the breakpoints in the figure demonstrates that the model has learned a more optimal separation between classes rather than using evenly spaced breakpoints.
+$$ P(y <= i | X) = \sigma(\theta_i - F(X)). $$
+
+Fitting this ordinal regression model using GBMs without a tool like GBNet is complex: (1) neither XGBoost nor LightGBM offer this objective; (2) calculating the negative log-likelihood (that is, its loss) has multiple steps--a cumulative distribution function is calculated and then differenced to find the likelihood; (3) the objective has parameters, $\theta_i$, that need to be fit along with $F(X)$. 
+
+`GBOrd` leverages `XGBModule` and `LGBModule` and native PyTorch functionality to make fitting an ordinal regression model, using either XGBoost or LightGBM back-ends, straightforward. As an illustration, a plot showing the fitted probabilities on the Ailerons dataset from [@gagolewski_ordinal_regression] is below. The breakpoint parameters are fit via gradient descent simultaneously with the GBM. The uneven spacing of the breakpoints in the figure demonstrates that the model has learned a more optimal separation between classes rather than using evenly spaced breakpoints.
 
 <img src="https://raw.githubusercontent.com/mthorrell/gbnet/444238e86b22b7b93f5851cecc54017d04ff4769/paper/ordinal_probs.png" alt="Fitted Ordinal Probabilities" style="width:50%;"/>
 
-Comparison of `gbnet.models.ordinal_regression.GBOrd` to alternatives across several datasets is linked [here](https://github.com/mthorrell/gbnet/blob/main/examples/ordinal_regression_comparison.ipynb).
+A reproducible benchmark comparing `GBOrd` to alternative approaches across several data sets is provided [here](https://github.com/mthorrell/gbnet/blob/main/examples/ordinal_regression_comparison.ipynb).
 
 # Acknowledgements
 
