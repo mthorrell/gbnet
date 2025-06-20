@@ -61,7 +61,7 @@ The key components of this code are `XGBModule`, the wrapper for XGBoost, and `g
 
 As demonstrated in this example, once an instance of `XGBModule` is defined, it can be combined with any other model logic supported by PyTorch. This straightforward example illustrates GBNet's ease-of-use in defining complex models.
 
-GBNet is the first software package to combine state-of-the-art gradient boosting software with neural network packages in a near-seamless and general way. Other packages either solve similar problems by providing Gradient Boosting packages with slightly more complex capabilities [@DBLP:journals/corr/abs-2007-09855;@ordinalgbt] or, when combining GBMs and Neural Networks, resort to different types of stacking or other more complex combinations [@dndf:2015;@deepgbm:2019;@ndt:2017;@node:2019]. GBNet allows users of the world's best gradient boosting packages to explore many of the rich architectural possibilities available through PyTorch.
+GBNet is the first software package to combine state-of-the-art gradient boosting software with neural network packages in a near-seamless and general way. Other packages either solve similar problems by providing Gradient Boosting packages with slightly more complex capabilities [@DBLP:journals/corr/abs-2007-09855;@ordinalgbt] or, when combining GBMs and Neural Networks, resort to different types of stacking or other more complex combinations [@dndf;@deepgbm;@ndt;@node]. GBNet allows users of the world's best gradient boosting packages to explore many of the rich architectural possibilities available through PyTorch.
 
 ## Research Applications
 
