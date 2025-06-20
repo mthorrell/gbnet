@@ -80,7 +80,7 @@ GBNet comprises two primary sets of submodules:
 
 ## Forecasting Example
 
-`gbnet.models.forecasting.Forecast` is compared to the Meta Prophet algorithm over 500 independent trials as reported in the following table. Each trial consists of selecting a dataset uniformly at random, selecting a training cutoff uniformly at random, selecting a test period cutoff uniformly at random, and finally training a model and testing performance. The default `gbnet.models.forecasting.Forecast` beat Prophet in 74% of trials and had a higher than 50% win rate on 8 out of 9 datasets when comparing RMSE values. In addition, `gbnet.models.forecasting.Forecast`, when it did have the losing RMSE, tended to lose by less in comparison to Prophet.
+`gbnet.models.forecasting.Forecast` is compared to the Meta Prophet algorithm over 500 independent trials as reported in the following table. Each trial consists of selecting a dataset uniformly at random, selecting a training cutoff uniformly at random, selecting a test period cutoff uniformly at random, and finally training a model and testing performance. The default `gbnet.models.forecasting.Forecast` beats Prophet in 74% of trials and has a higher than 50% win rate on 8 out of 9 datasets when comparing RMSE values. In addition, `gbnet.models.forecasting.Forecast`, when it has the losing RMSE, tends to lose by less in comparison to Prophet.
 
 | Dataset                   | N trials | GBNet win Rate (%) | Avg. GBNet Losing RMSE Ratio | Avg. Prophet Losing RMSE Ratio |
 |---------------------------|----------|--------------------|------------------------------|--------------------------------|
@@ -102,9 +102,9 @@ Ordinal regression fits a model with a 1-dimensional output, $F(X) \in \mathbb{R
 
 $$ P(y <= i | X) = \sigma(\theta_i - F(X)). $$
 
-Fitting this ordinal regression model using GBMs without a tool like GBNet is complex: (1) neither XGBoost nor LightGBM offer this objective; (2) calculating the negative log-likelihood (that is, its loss) has multiple steps--a cumulative distribution function is calculated and then differenced to find the likelihood; (3) the objective has parameters, $\theta_i$, that need to be fit along with $F(X)$. 
+Fitting this ordinal regression model using GBMs without a tool like GBNet is complex: (1) neither XGBoost nor LightGBM offer this objective; (2) calculating the negative log-likelihood (that is, its loss) has multiple steps&mdash;a cumulative distribution function is calculated and then differenced to find the likelihood; (3) the objective has parameters, $\theta_i$, that need to be fit along with $F(X)$. 
 
-`GBOrd` leverages `XGBModule` and `LGBModule` and native PyTorch functionality to make fitting an ordinal regression model, using either XGBoost or LightGBM back-ends, straightforward. As an illustration, a plot showing the fitted probabilities on the Ailerons dataset from [@gagolewski_ordinal_regression] is below. The breakpoint parameters are fit via gradient descent simultaneously with the GBM. The uneven spacing of the breakpoints in the figure demonstrates that the model has learned a more optimal separation between classes rather than using evenly spaced breakpoints.
+`GBOrd` leverages `XGBModule` and `LGBModule` and native PyTorch functionality to make fitting an ordinal regression model straightforward using either XGBoost or LightGBM back-ends. As an illustration, a plot showing the fitted probabilities on the Ailerons dataset from [@gagolewski_ordinal_regression] is below. The breakpoint parameters are fit via gradient descent simultaneously with the GBM. The uneven spacing of the breakpoints in the figure demonstrates that the model has learned a more optimal separation between classes rather than using evenly spaced breakpoints.
 
 ![Fitted ordinal regression probabilities for the Ailerons dataset](ordinal_probs.png)
 
