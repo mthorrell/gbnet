@@ -98,13 +98,13 @@ Code for these results is [here](https://github.com/mthorrell/gbnet/blob/main/ex
 
 ## Ordinal Regression Example
 
-Ordinal regression fits a model with a 1-dimensional output, $F(X) \in \mathbb{R}$, that is thresholded at different points to achieve an ordinal classification. McCullagh @mccullagh1980regression introduces a cumulative logit model with thresholds to define a consistent statistical model for ordinal regression. `gbnet.models.ordinal_regression.GBOrd` implements the cumulative logit model. Specifically `GBOrd` fits threshold parameters $\theta_i \in \mathbb{R}$ and a GBM, $F(X)$, to optimize the likelihood defined by
+Ordinal regression fits a model with a 1-dimensional output, $F(X) \in \mathbb{R}$, that is thresholded at different points to achieve an ordinal classification. @mccullagh1980regression introduces a cumulative logit model with thresholds to define a consistent statistical model for ordinal regression. `gbnet.models.ordinal_regression.GBOrd` implements the cumulative logit model. Specifically `GBOrd` fits threshold parameters $\theta_i \in \mathbb{R}$ and a GBM, $F(X)$, to optimize the likelihood defined by
 
 $$ P(y <= i | X) = \sigma(\theta_i - F(X)). $$
 
 Fitting this ordinal regression model using GBMs without a tool like GBNet is complex: (1) neither XGBoost nor LightGBM offer this objective; (2) calculating the negative log-likelihood (that is, its loss) has multiple steps&mdash;a cumulative distribution function is calculated and then differenced to find the likelihood; (3) the objective has parameters, $\theta_i$, that need to be fit along with $F(X)$. 
 
-`GBOrd` leverages `XGBModule` and `LGBModule` and native PyTorch functionality to make fitting an ordinal regression model straightforward using either XGBoost or LightGBM back-ends. As an illustration, a plot showing the fitted probabilities on the Ailerons dataset from [@gagolewski_ordinal_regression] is below. The breakpoint parameters are fit via gradient descent simultaneously with the GBM. The uneven spacing of the breakpoints in the figure demonstrates that the model has learned a more optimal separation between classes rather than using evenly spaced breakpoints.
+`GBOrd` leverages `XGBModule` and `LGBModule` and native PyTorch functionality to make fitting an ordinal regression model straightforward using either XGBoost or LightGBM back-ends. As an illustration, a plot showing the fitted probabilities on the Ailerons dataset from @gagolewski_ordinal_regression is below. The breakpoint parameters are fit via gradient descent simultaneously with the GBM. The uneven spacing of the breakpoints in the figure demonstrates that the model has learned a more optimal separation between classes rather than using evenly spaced breakpoints.
 
 ![Fitted ordinal regression probabilities for the Ailerons dataset](ordinal_probs.png)
 
