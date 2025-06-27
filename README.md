@@ -24,6 +24,8 @@ Docs: https://gbnet.readthedocs.io/
 
 ## Introduction
 
+XGBoost and LightGBM are industry-standard gradient boosting packages used to solve tabular data machine learning problems. Users of these packages wishing to define custom loss functions, novel architectures, or other advanced modeling scenarios, however, may face substantial difficulty due to potentially complex gradient and Hessian calculations required by both XGBoost and LightGBM. GBNet provides PyTorch Modules wrapping XGBoost and LightGBM so that users can construct and fit nearly arbitrary model architectures involving XGBoost or LightGBM without requiring users to provide gradient and Hessian calculations. PyTorch's autograd system calculates derivative information automatically; GBNet orchestrates delivery of that information back to the boosting algorithms. GBNet, by linking XGBoost and LightGBM to PyTorch, expands the set of applications for gradient boosting models.
+
 There are two main components of `gbnet`:
 
 - (1) `gbnet.xgbmodule`, `gbnet.lgbmodule` and `gbnet.gblinear` provide the Pytorch Modules that allow fitting of XGBoost, LightGBM and Boosted Linear models using Pytorch's computational network and differentiation capabilities.
