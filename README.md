@@ -1,11 +1,11 @@
 # GBNet
 
-XGBoost and LightGBM integrated into Pytorch as PyTorch Modules
+Pytorch Modules for XGBoost and LightGBM
 
 ## Table of Contents
 
-1. [Install and Docs](#install-and-docs)
-2. [Introduction](#introduction)
+1. [Introduction](#introduction)
+2. [Install and Docs](#install-and-docs)
 3. [Pytorch Modules](#pytorch-modules)
    - [Conceptually, how can Pytorch be used to fit XGBoost or LightGBM models?](#conceptually-how-can-pytorch-be-used-to-fit-xgboost-or-lightgbm-models)
    - [Is training a `gbnet` model closer to training a neural network or to training a GBM?](#is-training-a-gbnet-model-closer-to-training-a-neural-network-or-to-training-a-gbm)
@@ -16,13 +16,11 @@ XGBoost and LightGBM integrated into Pytorch as PyTorch Modules
    - [Ordinal Regression](#ordinal-regression)
 5. [Contributing](#contributing)
 
-## Install and Docs
 
-`pip install gbnet`
-
-Docs: https://gbnet.readthedocs.io/
 
 ## Introduction
+
+XGBoost and LightGBM are industry-standard gradient boosting packages used to solve tabular data machine learning problems. Users of these packages wishing to define custom loss functions, novel architectures, or other advanced modeling scenarios, however, may face substantial difficulty due to potentially complex gradient and Hessian calculations required by both XGBoost and LightGBM. GBNet provides PyTorch Modules wrapping XGBoost and LightGBM so that users can construct and fit nearly arbitrary model architectures involving XGBoost or LightGBM without requiring users to provide gradient and Hessian calculations. PyTorch's autograd system calculates derivative information automatically; GBNet orchestrates delivery of that information back to the boosting algorithms. GBNet, by linking XGBoost and LightGBM to PyTorch, expands the set of applications for gradient boosting models.
 
 There are two main components of `gbnet`:
 
@@ -35,6 +33,17 @@ There are two main components of `gbnet`:
   - `Forecast` is a forecasting model similar in execution to Metas' Prophet algorithm. In the settings we tested, `gbnet.models.forecasting.Forecast` beats the performance of Meta's Prophet algorithm (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison).
   - `GBOrd` is Ordinal Regression using GBMs (both XGBoost and LightGBM supported). The complex loss function (with fitable parameters) is specified in PyTorch and put on top of either `XGBModule` or `LGBModule`.
   - Other models with plans to be integrated are time-varying Survival analysis and more with NLP.
+
+## Install and Docs
+
+`pip install gbnet`
+
+### Troubleshooting and dependencies
+
+Use of virtual environments/conda is best practice when installing GBNet. GBNet requires XGBoost, LightGBM and PyTorch as key dependencies and may use these packages simultaneously. Each of these packages rely on OpenMP implementations for parallelization. Conflicts in the OpenMP implementations will throw warnings and may produce slow or incorrect outputs. Prior to installing these python dependencies, it is best to ensure each of these dependencies point to a single OpenMP implementation. Apple Silicon users may prefer to install `libomp` via `brew` prior to the python package dependency installations (see, for example, [build notes](https://xgboost.readthedocs.io/en/stable/build.html#running-cmake-and-build) for XGBoost for additional details).
+
+### Docs
+https://gbnet.readthedocs.io/
 
 ## Pytorch Modules
 
@@ -220,7 +229,7 @@ test = df[df['ds'] >= df['ds'].median()].reset_index(drop=True).copy()
 # gbnet
 gbnet_forecast_model = forecasting.Forecast()
 gbnet_forecast_model.fit(train, train['y'])
-test['gbnet_pred'] = gbnet_forecast_model.predict(test)['yhat']
+test['gbnet_pred'] = gbnet_forecast_model.predict(test)
 
 # prophet
 prophet_model = Prophet()
@@ -231,7 +240,7 @@ sel = test['y'].notnull()
 print(f"gbnet rmse: {root_mean_squared_error(test[sel]['y'], test[sel]['gbnet_pred'])}")
 print(f"prophet rmse: {root_mean_squared_error(test[sel]['y'], test[sel]['prophet_pred'])}")
 
-# gbnet rmse: 8.757314439339462
+# gbnet rmse: 7.930621578059079
 # prophet rmse: 20.10509806878121
 ```
 
