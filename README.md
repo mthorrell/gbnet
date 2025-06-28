@@ -229,7 +229,7 @@ test = df[df['ds'] >= df['ds'].median()].reset_index(drop=True).copy()
 # gbnet
 gbnet_forecast_model = forecasting.Forecast()
 gbnet_forecast_model.fit(train, train['y'])
-test['gbnet_pred'] = gbnet_forecast_model.predict(test)
+test['gbnet_pred'] = gbnet_forecast_model.predict(test)['yhat']
 
 # prophet
 prophet_model = Prophet()
@@ -240,7 +240,7 @@ sel = test['y'].notnull()
 print(f"gbnet rmse: {root_mean_squared_error(test[sel]['y'], test[sel]['gbnet_pred'])}")
 print(f"prophet rmse: {root_mean_squared_error(test[sel]['y'], test[sel]['prophet_pred'])}")
 
-# gbnet rmse: 7.930621578059079
+# gbnet rmse: 8.757314439339462
 # prophet rmse: 20.10509806878121
 ```
 
