@@ -26,6 +26,8 @@ Install GBNet using pip:
 
    pip install gbnet
 
+Additional troubleshooting details are available in the `Overview <overview.html>`_.
+
 Quick Start
 ----------
 
