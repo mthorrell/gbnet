@@ -76,7 +76,7 @@ Research into network architectures specifically tailored for GBMs may also hold
 GBNet comprises two primary sets of submodules:
 
 - `gbnet.xgbmodule`, `gbnet.lgbmodule`, `gbnet.gblinear`: Contain PyTorch Module classes (`XGBModule`, `LGBModule` and `GBLinear`) that integrate XGBoost, LightGBM and a linear booster respectively.
-- `gbnet.models`: Includes practical implementations of models using either `XGBModule` or `LGBModule`. Currently there are two implementations. `gbnet.models.forecasting` provides a Sci-kit Learn interface [@scikit-learn] for an optimized version of the forecast model shown above. `gbnet.models.ordinal_regression` provides a Sci-kit Learn interface for Ordinal Regression.
+- `gbnet.models`: Includes practical implementations of models using either `XGBModule` or `LGBModule`. Currently there are two implementations. `gbnet.models.forecasting` provides a scikit-learn interface [@scikit-learn] for an optimized version of the forecast model shown above. `gbnet.models.ordinal_regression` provides a scikit-learn interface for Ordinal Regression.
 
 ## Forecasting Example
 
