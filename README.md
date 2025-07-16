@@ -18,6 +18,7 @@ Pytorch Modules for XGBoost and LightGBM
    - [Forecasting](#forecasting)
    - [Ordinal Regression](#ordinal-regression)
 5. [Contributing](#contributing)
+6. [Cite this work](#cite-this-work)
 
 
 
@@ -275,3 +276,10 @@ Before submitting a pull request:
 5. Follow the existing code style
 
 For major changes, please open an issue first to discuss what you would like to change.
+
+
+## Cite this work
+
+```
+Horrell, M., (2025). GBNet: Gradient Boosting packages integrated into PyTorch. Journal of Open Source Software, 10(111), 8047, https://doi.org/10.21105/joss.08047
+```
