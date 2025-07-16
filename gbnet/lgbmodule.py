@@ -38,7 +38,8 @@ class LGBModule(BaseGBModule):
         self.input_dim = input_dim
         self.output_dim = output_dim
 
-        self.params = params
+        assert "objective" not in params, "objective should not be specified in params"
+        self.params = params.copy()
         self.bst = None
 
         self.FX = nn.Parameter(

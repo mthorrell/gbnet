@@ -66,6 +66,16 @@ def test_LightGBObj():
     ), "LightGBObj hess does not match instantiation"
 
 
+class TestAssertions(TestCase):
+    def test_assert_objective_in_params(self):
+        params = {"objective": "regression"}
+        with self.assertRaises(AssertionError) as context:
+            lgm.LGBModule(5, 3, 1, params=params)
+        self.assertIn(
+            "objective should not be specified in params", str(context.exception)
+        )
+
+
 class TestLGBModule(TestCase):
     def test_input_is_dataset_training_true_train_dat_none(self):
         """Test with lgb.Dataset input, training mode True, and train_dat is None."""

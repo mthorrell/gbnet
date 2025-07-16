@@ -57,6 +57,24 @@ def test_XGBObj():
         assert np.all(np.isclose(ohess, hess.detach().numpy()))
 
 
+class TestAssertions(TestCase):
+    def test_assert_objective_in_params(self):
+        params = {"objective": "regression"}
+        with self.assertRaises(AssertionError) as context:
+            xgm.XGBModule(5, 3, 1, params=params)
+        self.assertIn(
+            "objective should not be specified in params", str(context.exception)
+        )
+
+    def test_assert_base_score_in_params(self):
+        params = {"base_score": 1.0}
+        with self.assertRaises(AssertionError) as context:
+            xgm.XGBModule(5, 3, 1, params=params)
+        self.assertIn(
+            "base_score should not be specified in params", str(context.exception)
+        )
+
+
 class TestInputChecking(TestCase):
     def test_input_is_dmatrix_training_true_dtrain_none(self):
         """Test with xgb.DMatrix input, training mode True, and dtrain is None."""
