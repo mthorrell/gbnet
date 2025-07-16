@@ -39,7 +39,15 @@ class XGBModule(BaseGBModule):
         self.input_dim = input_dim
         self.output_dim = output_dim
 
-        self.params = params
+        self.params = params.copy()
+
+        assert (
+            "objective" not in self.params
+        ), "objective should not be specified in params"
+        assert (
+            "base_score" not in self.params
+        ), "base_score should not be specified in params"
+
         self.params["objective"] = "reg:squarederror"
         self.params["base_score"] = 0
         self.n_completed_boost_rounds = 0

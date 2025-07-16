@@ -1,4 +1,7 @@
 # GBNet
+[![DOI](https://joss.theoj.org/papers/10.21105/joss.08047/status.svg)](https://doi.org/10.21105/joss.08047)
+
+
 
 Pytorch Modules for XGBoost and LightGBM
 
