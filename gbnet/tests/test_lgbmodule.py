@@ -199,3 +199,31 @@ class TestLGBModule(TestCase):
 
         with self.assertRaises(AssertionError):
             module._input_checking_setting(np.random.random([11, 5]))
+
+
+class TestSaveLoad(TestCase):
+    def test_lgbmodule_save_load_predictions(self):
+        batch_size = 100
+        input_dim = 3
+        output_dim = 1
+        np.random.seed(42)
+        X = np.random.randn(batch_size, input_dim)
+        Y = np.random.random([batch_size, output_dim])
+
+        model = lgm.LGBModule(batch_size, input_dim, output_dim)
+        MSE = torch.nn.MSELoss()
+        model.train()
+        loss = MSE(model(X), torch.Tensor(Y))
+        loss.backward(create_graph=True)
+        model.gb_step()
+        output_before = model(X).detach().numpy()
+        # Save
+        state = model.state_dict()
+        # Load into a new model
+        model2 = lgm.LGBModule(batch_size, input_dim, output_dim)
+        model2.load_state_dict(state)
+        model2.eval()
+        output_after = model2(X).detach().numpy()
+        assert np.allclose(
+            output_before, output_after
+        ), "Outputs differ after save/load"

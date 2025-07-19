@@ -190,6 +190,28 @@ class XGBModule(BaseGBModule):
             )
         self.n_completed_boost_rounds = self.n_completed_boost_rounds + 1
 
+    def state_dict(self, destination=None, prefix="", keep_vars=False):
+        # Get PyTorch state dict
+        state = super().state_dict(
+            destination=destination, prefix=prefix, keep_vars=keep_vars
+        )
+        # Add XGBoost model as bytes
+        state[prefix + "xgb_model"] = self.bst.save_raw()
+        return state
+
+    def load_state_dict(self, state_dict, strict=True, assign=False):
+        # Extract XGBoost model bytes (handle possible prefix)
+        xgb_key = None
+        for key in state_dict:
+            if key.endswith("xgb_model"):
+                xgb_key = key
+                break
+        if xgb_key is not None:
+            xgb_bytes = state_dict.pop(xgb_key)
+            self.bst = xgb.Booster(model_file=xgb_bytes)
+        # Load PyTorch state dict
+        super().load_state_dict(state_dict, strict, assign)
+
 
 class XGBObj:
     """Helper class for use with XGBoost as a backend for XGBModule"""

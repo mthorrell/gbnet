@@ -57,6 +57,34 @@ def test_XGBObj():
         assert np.all(np.isclose(ohess, hess.detach().numpy()))
 
 
+class TestSaveLoad(TestCase):
+    def test_xgbmodule_save_load_predictions(self):
+        batch_size = 10
+        input_dim = 3
+        output_dim = 1
+        np.random.seed(42)
+        X = np.random.randn(batch_size, input_dim)
+        Y = np.random.random([batch_size, output_dim])
+
+        model = xgm.XGBModule(batch_size, input_dim, output_dim)
+        MSE = torch.nn.MSELoss()
+        model.train()
+        loss = MSE(model(X), torch.Tensor(Y))
+        loss.backward(create_graph=True)
+        model.gb_step()
+        output_before = model(X).detach().numpy()
+        # Save
+        state = model.state_dict()
+        # Load into a new model
+        model2 = xgm.XGBModule(batch_size, input_dim, output_dim)
+        model2.load_state_dict(state)
+        model2.train()
+        output_after = model2(X).detach().numpy()
+        assert np.allclose(
+            output_before, output_after
+        ), "Outputs differ after save/load"
+
+
 class TestAssertions(TestCase):
     def test_assert_objective_in_params(self):
         params = {"objective": "regression"}
