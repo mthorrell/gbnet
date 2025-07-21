@@ -190,31 +190,14 @@ class LGBModule(BaseGBModule):
         self.grad = None
         self.hess = None
 
-    def state_dict(self, destination=None, prefix="", keep_vars=False):
-        state = super().state_dict(
-            destination=destination, prefix=prefix, keep_vars=keep_vars
-        )
-        if self.bst is not None:
-            state[prefix + "lgb_model"] = self.bst.model_to_string()
+    def get_extra_state(self):
+        return self.bst.model_to_string() if self.bst else None
+
+    def set_extra_state(self, state):
+        if state is not None:
+            self.bst = lgb.Booster(model_str=state)
         else:
-            state[prefix + "lgb_model"] = None
-        return state
-
-    def load_state_dict(self, state_dict, strict=True, assign=False):
-        lgb_key = None
-        for key in state_dict:
-            if key.endswith("lgb_model"):
-                lgb_key = key
-                break
-        if lgb_key is not None:
-            lgb_str = state_dict.pop(lgb_key)
-            if lgb_str is not None:
-                import lightgbm as lgb
-
-                self.bst = lgb.Booster(model_str=lgb_str)
-            else:
-                self.bst = None
-        super().load_state_dict(state_dict, strict, assign)
+            self.bst = None
 
 
 class LightGBObj:
