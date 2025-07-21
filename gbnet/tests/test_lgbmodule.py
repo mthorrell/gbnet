@@ -201,6 +201,18 @@ class TestLGBModule(TestCase):
             module._input_checking_setting(np.random.random([11, 5]))
 
 
+class Wrapper(torch.nn.Module):
+    def __init__(self, batch_size, input_dim, output_dim):
+        super().__init__()
+        self.model = lgm.LGBModule(batch_size, input_dim, output_dim)
+
+    def forward(self, x):
+        return self.model(x)
+
+    def gb_step(self):
+        self.model.gb_step()
+
+
 class TestSaveLoad(TestCase):
     def test_lgbmodule_save_load_predictions(self):
         batch_size = 100
@@ -227,3 +239,29 @@ class TestSaveLoad(TestCase):
         assert np.allclose(
             output_before, output_after
         ), "Outputs differ after save/load"
+
+    def test_lgbmodule_save_load_submodule_predictions(self):
+        batch_size = 100
+        input_dim = 3
+        output_dim = 1
+        np.random.seed(42)
+        X = np.random.randn(batch_size, input_dim)
+        Y = np.random.random([batch_size, output_dim])
+
+        wrapper = Wrapper(batch_size, input_dim, output_dim)
+        MSE = torch.nn.MSELoss()
+        wrapper.train()
+        loss = MSE(wrapper(X), torch.Tensor(Y))
+        loss.backward(create_graph=True)
+        wrapper.gb_step()
+        output_before = wrapper(X).detach().numpy()
+        # Save
+        state = wrapper.state_dict()
+        # Load into a new wrapper
+        wrapper2 = Wrapper(batch_size, input_dim, output_dim)
+        wrapper2.load_state_dict(state)
+        wrapper2.eval()
+        output_after = wrapper2(X).detach().numpy()
+        assert np.allclose(
+            output_before, output_after
+        ), "Outputs differ after save/load with submodule"
