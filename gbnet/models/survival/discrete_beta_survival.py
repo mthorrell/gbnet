@@ -90,8 +90,6 @@ class BetaSurvivalModel(BaseEstimator, RegressorMixin):
         Defaults to "XGBModule".
     min_hess : float, optional
         Minimum hessian value for numerical stability. Defaults to 0.0.
-    device : str, optional
-        Device to use for computation ('cpu' or 'cuda'). Defaults to 'cpu'.
 
     Attributes
     ----------
@@ -130,21 +128,16 @@ class BetaSurvivalModel(BaseEstimator, RegressorMixin):
         params=None,
         module_type="XGBModule",
         min_hess=0.0,
-        device="cpu",
     ):
         if params is None:
             params = {}
         if nrounds is None:
-            if module_type == "XGBModule":
-                nrounds = 500
-            if module_type == "LGBModule":
-                nrounds = 1000
+            nrounds = 100
 
         self.nrounds = nrounds
         self.params = params
         self.module_type = module_type
         self.min_hess = min_hess
-        self.device = device
         self.model_ = None
         self.losses_ = []
         self.Module = loadModule(module_type)
@@ -175,8 +168,8 @@ class BetaSurvivalModel(BaseEstimator, RegressorMixin):
         n_samples = X.shape[0]
 
         # Convert to tensors
-        times_torch = torch.tensor(times, dtype=torch.float32, device=self.device)
-        events_torch = torch.tensor(events, dtype=torch.float32, device=self.device)
+        times_torch = torch.tensor(times, dtype=torch.float32)
+        events_torch = torch.tensor(events, dtype=torch.float32)
 
         # Create appropriate data matrix based on module type
         dmatrix = create_data_matrix(X, self.module_type, enable_categorical=True)
@@ -202,7 +195,7 @@ class BetaSurvivalModel(BaseEstimator, RegressorMixin):
             beta = torch.exp(b)
 
             # Compute NLL per sample
-            log_probs = torch.zeros(n_samples, device=self.device)
+            log_probs = torch.zeros(n_samples)
             uncensored_mask = events_torch == 1
             censored_mask = events_torch == 0
 
@@ -254,7 +247,7 @@ class BetaSurvivalModel(BaseEstimator, RegressorMixin):
             beta = torch.exp(b)
 
             survival_probs = np.zeros((X.shape[0], len(times)))
-            times_tensor = torch.tensor(times, dtype=torch.float32, device=self.device)
+            times_tensor = torch.tensor(times, dtype=torch.float32)
 
             for i, t in enumerate(times_tensor):
                 log_surv = log_p_surv(t, alpha, beta)
@@ -319,10 +312,10 @@ class BetaSurvivalModel(BaseEstimator, RegressorMixin):
             alpha = torch.exp(a)
             beta = torch.exp(b)
 
-            times_torch = torch.tensor(times, dtype=torch.float32, device=self.device)
-            events_torch = torch.tensor(events, dtype=torch.float32, device=self.device)
+            times_torch = torch.tensor(times, dtype=torch.float32)
+            events_torch = torch.tensor(events, dtype=torch.float32)
 
-            log_probs = torch.zeros(X.shape[0], device=self.device)
+            log_probs = torch.zeros(X.shape[0])
             uncensored_mask = events_torch == 1
             censored_mask = events_torch == 0
 
