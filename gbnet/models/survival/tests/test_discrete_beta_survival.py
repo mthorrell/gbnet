@@ -322,12 +322,6 @@ class TestBetaSurvivalModel(TestCase):
         self.assertTrue(np.all(survival_probs >= 0))
         self.assertTrue(np.all(survival_probs <= 1))
 
-        # Test hazard probability prediction
-        hazard_probs = self.model.predict_hazard_probs(self.X[:5], times)
-        self.assertEqual(hazard_probs.shape, (5, len(times)))
-        self.assertTrue(np.all(hazard_probs >= 0))
-        self.assertTrue(np.all(hazard_probs <= 1))
-
         # Test expected survival time prediction
         expected_times = self.model.predict(self.X[:5])
         self.assertEqual(expected_times.shape, (5,))
@@ -346,38 +340,10 @@ class TestBetaSurvivalModel(TestCase):
             model.predict_survival(self.X, [1, 2, 3])
 
         with self.assertRaises(Exception):
-            model.predict_hazard_probs(self.X, [1, 2, 3])
-
-        with self.assertRaises(Exception):
             model.predict(self.X)
 
         with self.assertRaises(Exception):
             model.score(self.X, self.y)
-
-    def test_survival_hazard_relationship_and_parameters(self):
-        """Test that survival and hazard probabilities are consistent and parameters are valid."""
-        # Test prediction
-        times = [1, 2, 3]
-        survival_probs = self.model.predict_survival(self.X[:3], times)
-        hazard_probs = self.model.predict_hazard_probs(self.X[:3], times)
-
-        # For discrete time, survival at time t should be related to hazard
-        # S(t) = S(t-1) * (1 - h(t)) for t > 1
-        for i in range(3):  # For each sample
-            for j in range(1, len(times)):  # For each time point after the first
-                # Get survival probabilities
-                s_t = survival_probs[i, j]
-                s_t_prev = survival_probs[i, j - 1]
-                h_t = hazard_probs[i, j]
-
-                # Check the relationship (allowing for numerical precision)
-                expected_s_t = s_t_prev * (1 - h_t)
-                self.assertAlmostEqual(s_t, expected_s_t, places=5)
-
-        # Test that the model produces valid alpha and beta parameters
-        # If we get here without errors, the alpha and beta parameters
-        # were valid (positive) after exponentiation
-        self.assertTrue(np.all(np.isfinite(survival_probs)))
 
     def test_different_module_types_and_edge_cases(self):
         """Test different module types and edge cases."""
@@ -456,20 +422,16 @@ class TestBetaSurvivalModelIntegration(TestCase):
         # Test XGBoost model predictions
         times = [1, 5, 10, 15, 20]
         survival_probs = self.xgb_model.predict_survival(self.X, times)
-        hazard_probs = self.xgb_model.predict_hazard_probs(self.X, times)
         expected_times = self.xgb_model.predict(self.X)
         score = self.xgb_model.score(self.X, self.y)
 
         # Check shapes
         self.assertEqual(survival_probs.shape, (self.n_samples, len(times)))
-        self.assertEqual(hazard_probs.shape, (self.n_samples, len(times)))
         self.assertEqual(expected_times.shape, (self.n_samples,))
 
         # Check value ranges
         self.assertTrue(np.all(survival_probs >= 0))
         self.assertTrue(np.all(survival_probs <= 1))
-        self.assertTrue(np.all(hazard_probs >= 0))
-        self.assertTrue(np.all(hazard_probs <= 1))
         self.assertTrue(np.all(expected_times > 0))
         self.assertTrue(np.isfinite(score))
 
@@ -494,20 +456,6 @@ class TestBetaSurvivalModelIntegration(TestCase):
         # (allowing for some numerical noise)
         for i in range(1, len(survival_curve)):
             self.assertLessEqual(survival_curve[i], survival_curve[i - 1] + 1e-6)
-
-        # Test hazard curve properties
-        times_hazard = list(range(1, 21))
-        hazard_probs_detailed = self.xgb_model.predict_hazard_probs(
-            sample_X, times_hazard
-        )
-        hazard_curve = hazard_probs_detailed[0]
-
-        # Hazard probabilities should be between 0 and 1
-        self.assertTrue(np.all(hazard_curve >= 0))
-        self.assertTrue(np.all(hazard_curve <= 1))
-
-        # Hazard should be finite
-        self.assertTrue(np.all(np.isfinite(hazard_curve)))
 
 
 if __name__ == "__main__":

@@ -262,44 +262,6 @@ class BetaSurvivalModel(BaseEstimator, RegressorMixin):
 
         return survival_probs
 
-    def predict_hazard_probs(self, X, times):
-        """Predict hazard probabilities P(T = t | T >= t) for given times.
-
-        Parameters
-        ----------
-        X : array-like of shape (n_samples, n_features)
-            Input features.
-        times : array-like of shape (n_times,)
-            Times at which to predict hazard probabilities.
-
-        Returns
-        -------
-        hazard_probs : array-like of shape (n_samples, n_times)
-            Hazard probabilities for each sample at each time point.
-        """
-        check_is_fitted(self, "model_")
-
-        dmatrix = create_data_matrix(X, self.module_type, enable_categorical=True)
-
-        with torch.no_grad():
-            pred = self.model_(dmatrix)
-            a, b = pred[:, 0], pred[:, 1]
-            alpha = torch.exp(a)
-            beta = torch.exp(b)
-
-            hazard_probs = np.zeros((X.shape[0], len(times)))
-            times_tensor = torch.tensor(times, dtype=torch.float32, device=self.device)
-
-            for i, t in enumerate(times_tensor):
-                log_event = log_p_event(t, alpha, beta)
-                log_surv_prev = (
-                    log_p_surv(t - 1, alpha, beta) if t > 1 else torch.zeros_like(alpha)
-                )
-                log_hazard = log_event - log_surv_prev
-                hazard_probs[:, i] = torch.exp(log_hazard).cpu().numpy()
-
-        return hazard_probs
-
     def predict(self, X):
         """Predict the expected survival time.
 
