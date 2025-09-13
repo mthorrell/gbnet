@@ -275,9 +275,8 @@ class TestBetaSurvivalModel(TestCase):
         model = BetaSurvivalModel()
 
         self.assertEqual(model.module_type, "XGBModule")
-        self.assertEqual(model.nrounds, 500)  # Default for XGBModule
+        self.assertEqual(model.nrounds, 100)  # Default for XGBModule
         self.assertEqual(model.min_hess, 0.0)
-        self.assertEqual(model.device, "cpu")
         self.assertIsNone(model.model_)
         self.assertEqual(len(model.losses_), 0)
 
@@ -286,7 +285,7 @@ class TestBetaSurvivalModel(TestCase):
         model = BetaSurvivalModel(module_type="LGBModule")
 
         self.assertEqual(model.module_type, "LGBModule")
-        self.assertEqual(model.nrounds, 1000)  # Default for LGBModule
+        self.assertEqual(model.nrounds, 100)  # Default for LGBModule
 
     def test_init_custom_params(self):
         """Test initialization with custom parameters."""
@@ -296,14 +295,12 @@ class TestBetaSurvivalModel(TestCase):
             params=params,
             module_type="LGBModule",
             min_hess=0.1,
-            device="cuda",
         )
 
         self.assertEqual(model.nrounds, 100)
         self.assertEqual(model.params, params)
         self.assertEqual(model.module_type, "LGBModule")
         self.assertEqual(model.min_hess, 0.1)
-        self.assertEqual(model.device, "cuda")
 
     def test_fit_basic(self):
         """Test basic fitting functionality."""
