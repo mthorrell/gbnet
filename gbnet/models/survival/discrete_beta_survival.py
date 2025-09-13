@@ -262,7 +262,7 @@ class BetaSurvivalModel(BaseEstimator, RegressorMixin):
 
         return survival_probs
 
-    def predict_hazard(self, X, times):
+    def predict_hazard_probs(self, X, times):
         """Predict hazard probabilities P(T = t | T >= t) for given times.
 
         Parameters
