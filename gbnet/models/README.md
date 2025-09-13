@@ -50,3 +50,7 @@ preds = estimator.predict(df[xcols], return_logits=False)
 # Get class probabilities
 probs = estimator.predict_proba(df[xcols])
 ```
+
+# Discrete Time Survival Analysis
+
+See [this notebook](https://github.com/mthorrell/gbnet/blob/main/examples/discrete_beta_survival_example.ipynb) for example usage.
