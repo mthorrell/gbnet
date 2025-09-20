@@ -1,8 +1,8 @@
 from typing import List, Dict, Any, Optional
 
+import numpy as np
 import pandas as pd
 import torch
-from torch import nn
 
 
 def loadModule(module):
@@ -18,7 +18,7 @@ def loadModule(module):
         return lgbmodule.LGBModule
 
 
-class HazardIntegrator(nn.Module):
+class HazardIntegrator(torch.nn.Module):
     def __init__(
         self,
         covariate_cols: List[str] = [],
@@ -196,3 +196,60 @@ class HazardIntegrator(nn.Module):
         """Triggers the gradient boosting model to take a step."""
         if self.gb_module:
             self.gb_module.gb_step()
+
+
+def expand_overlapping_units_locf(
+    df: pd.DataFrame,
+    unit_col: str = "unit_id",
+    time_col: str = "time",
+    fill_value=np.nan,
+):
+    # Unique times observed anywhere in the data, sorted
+    all_times = np.sort(df[time_col].unique())
+
+    # Min & max time for each unit
+    t_min = df.groupby(unit_col)[time_col].min()
+    t_max = df.groupby(unit_col)[time_col].max()
+
+    # Skeleton of unit–time combinations
+    pieces = []
+    for unit in t_min.index:
+        mask = (all_times >= t_min[unit]) & (all_times <= t_max[unit])
+        pieces.append(pd.DataFrame({unit_col: unit, time_col: all_times[mask]}))
+    skeleton = pd.concat(pieces, ignore_index=True)
+
+    # Merge and sort
+    out = (
+        skeleton.merge(df, on=[unit_col, time_col], how="left")
+        .sort_values([unit_col, time_col], kind="mergesort")
+        .reset_index(drop=True)
+    )
+
+    # Identify covariate columns (excluding unit and time)
+    covariate_cols = [col for col in df.columns if col not in {unit_col, time_col}]
+
+    # LOCF: forward fill per unit
+    out[covariate_cols] = out.groupby(unit_col)[covariate_cols].ffill()
+
+    # Optional: still fill any remaining NaNs (e.g., if a unit starts mid-way)
+    # out[covariate_cols] = out[covariate_cols].fillna(fill_value)
+
+    return out
+
+
+def to_integration_df(df, cols):
+    df = df.copy()
+    df["unit_id"] = range(df.shape[0])
+    unit_metadata = df[["unit_id", "event"]].drop_duplicates()
+    edf, mdf = (
+        pd.concat(
+            [df, pd.DataFrame([{"unit_id": i, "time": 0} for i in range(df.shape[0])])]
+        )[["unit_id", "time"]]
+        .merge(unit_metadata, on="unit_id", how="inner", validate="many_to_one")
+        .sort_values(["unit_id", "time"])
+        .reset_index(drop=True),
+        df.copy(),
+    )
+    return edf.merge(
+        mdf[["unit_id"] + cols], on="unit_id", how="left", validate="many_to_one"
+    ).copy()
