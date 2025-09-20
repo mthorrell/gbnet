@@ -104,7 +104,9 @@ class HazardIntegrator(torch.nn.Module):
             ),
         }
 
-    def forward(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def forward(
+        self, df: pd.DataFrame, return_survival_estimates: bool = True
+    ) -> Dict[str, Any]:
         # During training, use cached data. In eval mode, re-process every time.
         if not self.static_data or not self.training:
             self._prepare_data(df)
@@ -143,38 +145,6 @@ class HazardIntegrator(torch.nn.Module):
             interleave_amts.size(0), device=hazard.device
         ).scatter_reduce_(0, unit_ids, trapz_slice, reduce="sum", include_self=False)
 
-        # ...and the cumulative hazard Λ(t) for each time step.
-        # Your original logic is solid; we just use the cached tensors.
-        Lambda_global = torch.cumsum(trapz_slice, dim=0)
-        # Create a tensor of cumulative sums at the end of each *previous* group
-        cusum_prev_groups = torch.cat(
-            [
-                torch.tensor([0.0], device=hazard.device),
-                torch.cumsum(unit_Lambda, 0)[:-1],
-            ]
-        )
-        # Broadcast this value to subtract it from each member of the next group
-        Lambda = Lambda_global - torch.repeat_interleave(
-            cusum_prev_groups, interleave_amts
-        )
-
-        # 4. Survival function S(t) = exp(‑Λ(t))
-        survival = torch.exp(-Lambda)
-
-        # 5. Expected value 𝔼[T] ≈ Σ S(t)Δt (trapezoidal integration)
-        surv_slice = torch.zeros_like(survival)
-        surv_slice[same_unit] = (
-            0.5 * (survival[same_unit] + survival.roll(1, 0)[same_unit]) * dt[same_unit]
-        )
-
-        unit_E = torch.zeros_like(unit_Lambda).scatter_reduce_(
-            0, unit_ids, surv_slice, reduce="sum", include_self=False
-        )
-
-        # 6. Extract the final hazard value for each unit
-        # last_event_mask = torch.cat([same_unit[1:], torch.tensor([True])]) & ~same_unit
-        # last_hazard = hazard[last_event_mask]
-
         is_last_in_group = torch.cat(
             (
                 unit_ids[:-1] != unit_ids[1:],
@@ -183,13 +153,44 @@ class HazardIntegrator(torch.nn.Module):
         )
         last_hazard = hazard[is_last_in_group]
 
+        if return_survival_estimates:
+            # ...and the cumulative hazard Λ(t) for each time step.
+            # Your original logic is solid; we just use the cached tensors.
+            Lambda_global = torch.cumsum(trapz_slice, dim=0)
+            # Create a tensor of cumulative sums at the end of each *previous* group
+            cusum_prev_groups = torch.cat(
+                [
+                    torch.tensor([0.0], device=hazard.device),
+                    torch.cumsum(unit_Lambda, 0)[:-1],
+                ]
+            )
+            # Broadcast this value to subtract it from each member of the next group
+            Lambda = Lambda_global - torch.repeat_interleave(
+                cusum_prev_groups, interleave_amts
+            )
+
+            # 4. Survival function S(t) = exp(‑Λ(t))
+            survival = torch.exp(-Lambda)
+
+            # 5. Expected value 𝔼[T] ≈ Σ S(t)Δt (trapezoidal integration)
+            surv_slice = torch.zeros_like(survival)
+            surv_slice[same_unit] = (
+                0.5
+                * (survival[same_unit] + survival.roll(1, 0)[same_unit])
+                * dt[same_unit]
+            )
+
+            unit_E = torch.zeros_like(unit_Lambda).scatter_reduce_(
+                0, unit_ids, surv_slice, reduce="sum", include_self=False
+            )
+
         # 7. Unsort results to match original DataFrame order
         return {
             "hazard": hazard[unsort_idx],
             "unit_last_hazard": last_hazard,
             "unit_integrated_hazard": unit_Lambda,
-            "survival": survival[unsort_idx],
-            "unit_expected_time": unit_E,
+            "survival": None if not return_survival_estimates else survival[unsort_idx],
+            "unit_expected_time": None if not return_survival_estimates else unit_E,
         }
 
     def gb_step(self):

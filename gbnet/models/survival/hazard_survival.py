@@ -290,7 +290,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
             self.integrator_.train()
             self.integrator_.zero_grad()
 
-            out = self.integrator_(exp_df)
+            out = self.integrator_(exp_df, return_survival_estimates=False)
 
             # Negative log-likelihood loss using pre-computed event indicators
             loss = (
