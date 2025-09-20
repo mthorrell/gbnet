@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 import numpy as np
 import pandas as pd
@@ -19,12 +21,6 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
 
     Parameters
     ----------
-    covariate_cols : list of str, optional
-        List of covariate column names to use as features. "time" is always included.
-        Defaults to empty list.
-    time_varying_cols : list of str, optional
-        List of column names that vary over time (for static data expansion).
-        Defaults to empty list.
     nrounds : int, optional
         Number of boosting rounds. Defaults to 100.
     params : dict, optional
@@ -46,7 +42,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
 
     Methods
     -------
-    fit(X, y, auto_expand_time=True)
+    fit(X, y)
         Trains the model using input features X and survival data y.
     predict_survival(X, times)
         Predicts survival probabilities for given times.
@@ -75,22 +71,14 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
 
     def __init__(
         self,
-        covariate_cols=None,
-        time_varying_cols=None,
         nrounds=100,
         params=None,
         module_type="XGBModule",
         min_hess=0.0,
     ):
-        if covariate_cols is None:
-            covariate_cols = []
-        if time_varying_cols is None:
-            time_varying_cols = []
         if params is None:
             params = {}
 
-        self.covariate_cols = covariate_cols
-        self.time_varying_cols = time_varying_cols
         self.nrounds = nrounds
         self.params = params
         self.module_type = module_type
@@ -126,8 +114,9 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
             (data_format, modified_X) where data_format is 'static' or 'time_varying'
             and modified_X is the potentially modified X DataFrame
         """
+        X = X.copy()
         assert "unit_id" in X
-        if y is not None:
+        if isinstance(y, pd.DataFrame):
             assert "unit_id" in y
             assert "time" in y
             assert "event" in y
@@ -145,7 +134,13 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         if is_static:
             if "time" not in X.columns:
                 # Copy time from y to X
-                modified_X = X.merge(y[["unit_id", "time"]], on="unit_id", how="left")
+                if isinstance(y, np.ndarray):
+                    modified_X = X.copy()
+                    modified_X["time"] = max(y)
+                else:
+                    modified_X = X.merge(
+                        y[["unit_id", "time"]], on="unit_id", how="left"
+                    ).copy()
             else:
                 # Validate that time columns match when joining on unit_id
                 merged = X[["unit_id", "time"]].merge(
@@ -157,11 +152,15 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
                     )
             modified_X = self._static_to_minimal_time_varying_dataset(modified_X)
 
-        modified_X = expand_overlapping_units_locf(modified_X)
+        modified_X = (
+            expand_overlapping_units_locf(modified_X)
+            if not isinstance(y, np.ndarray)
+            else expand_overlapping_units_locf(modified_X, y)
+        )
 
         return ("static" if is_static else "time_varying", modified_X, y)
 
-    def fit(self, X, y, auto_expand_time=True):
+    def fit(self, X, y):
         """Fit the hazard integration survival model.
 
         Parameters
@@ -170,8 +169,6 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
             Training features. Can be static or time-varying.
         y : pd.DataFrame
             Survival data with 'time', 'event', 'unit_id' columns.
-        auto_expand_time : bool, default True
-            Whether to automatically expand static data to time-varying format.
 
         Returns
         -------
@@ -231,25 +228,91 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         self.integrator_.eval()
         return self
 
+    def predict_base(self, X, y):
+        if not isinstance(X, pd.DataFrame):
+            raise ValueError("X must be a pandas DataFrame")
+        if not isinstance(y, pd.DataFrame):
+            raise ValueError("y must be a pandas DataFrame")
+
+        data_format_, exp_df, y = self._validate_and_convert_input_data(X, y)
+        return self.integrator_(exp_df)
+
+    def predict_times(self, X, times=None):
+        if not isinstance(X, pd.DataFrame):
+            raise ValueError("X must be a pandas DataFrame")
+
+        if times is None:
+            times = np.linspace(0, self.max_time, 100)
+
+        X = X.copy()
+
+        data_format_, exp_df, y = self._validate_and_convert_input_data(X, times)
+        exp_df = exp_df.reset_index(drop=True).copy()
+        output = self.integrator_(exp_df)
+
+        exp_df["hazard"] = output["hazard"]
+        exp_df["survival"] = output["survival"]
+
+        udf = exp_df[["unit_id"]].drop_duplicates().reset_index(drop=True).copy()
+        udf["last_hazard"] = output["unit_last_hazard"]
+        udf["integrated_hazard"] = output["unit_integrated_hazard"]
+        udf["expected_time"] = output["unit_expected_time"]
+
+        return exp_df, udf
+
+    def predict_survival(self, X):
+        exp_df, udf = self.predict_times(X)
+        return exp_df[["unit_id", "time", "survival", "hazard"]]
+
+    def predict(self, X):
+        exp_df, udf = self.predict_times(X)
+
+        median = (
+            exp_df[exp_df["survival"] > 0.5]
+            .groupby("unit_id")["time"]
+            .max()
+            .rename("predicted_median_time")
+            .reset_index()
+        )
+
+        output = udf[["unit_id", "expected_time"]].merge(
+            median, on="unit_id", how="left", validate="one_to_one"
+        )
+        output["predicted_median_time"] = output["predicted_median_time"].fillna(0)
+        return output
+
 
 def expand_overlapping_units_locf(
     df: pd.DataFrame,
+    y: Optional[np.ndarray] = None,
     unit_col: str = "unit_id",
     time_col: str = "time",
 ):
     # Unique times observed anywhere in the data, sorted
-    all_times = np.sort(df[time_col].unique())
+    if y is None:
+        all_times = np.sort(df[time_col].unique())
+    else:
+        all_times = np.sort(
+            np.unique(np.concatenate([df[time_col].values, np.asarray(y)]))
+        )
 
     # Min & max time for each unit
     t_min = df.groupby(unit_col)[time_col].min()
     t_max = df.groupby(unit_col)[time_col].max()
 
     # Skeleton of unit–time combinations
-    pieces = []
-    for unit in t_min.index:
-        mask = (all_times >= t_min[unit]) & (all_times <= t_max[unit])
-        pieces.append(pd.DataFrame({unit_col: unit, time_col: all_times[mask]}))
-    skeleton = pd.concat(pieces, ignore_index=True)
+    if y is None:
+        pieces = []
+        for unit in t_min.index:
+            mask = (all_times >= t_min[unit]) & (all_times <= t_max[unit])
+            pieces.append(pd.DataFrame({unit_col: unit, time_col: all_times[mask]}))
+        skeleton = pd.concat(pieces, ignore_index=True)
+    else:
+        skeleton = (
+            df[[unit_col]]
+            .drop_duplicates()
+            .merge(pd.DataFrame({"time": all_times}), how="cross")
+        )
 
     # Merge and sort
     out = (
