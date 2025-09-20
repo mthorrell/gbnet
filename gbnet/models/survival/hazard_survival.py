@@ -1,12 +1,9 @@
 import torch
+import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin
 
-from .hazard_integrator import (
-    HazardIntegrator,
-    to_integration_df,
-    expand_overlapping_units_locf,
-)
+from .hazard_integrator import HazardIntegrator
 
 
 class HazardSurvivalModel(BaseEstimator, RegressorMixin):
@@ -44,8 +41,6 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         Trained hazard integrator module. Set after fitting.
     losses_ : list
         List of loss values recorded at each training iteration.
-    n_features_in_ : int
-        Number of features seen during fit.
     data_format_ : str
         Detected data format: 'static' or 'time_varying'.
 
@@ -102,11 +97,21 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         self.min_hess = min_hess
         self.integrator_ = None
         self.losses_ = []
-        self.n_features_in_ = None
         self.data_format_ = None
 
-    def _detect_data_format(self, X, y):
-        """Detect whether the input data is in static or time-varying format.
+    def _static_to_minimal_time_varying_dataset(self, X):
+        assert "time" in X and "unit_id" in X and X["unit_id"].is_unique
+        X0 = X.copy()
+        X0["time"] = 0
+        return (
+            pd.concat([X0, X], axis=0)
+            .sort_values(["unit_id", "time"])
+            .reset_index(drop=True)
+            .copy()
+        )
+
+    def _validate_and_convert_input_data(self, X, y):
+        """Validate input data according to the new requirements.
 
         Parameters
         ----------
@@ -117,110 +122,44 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
 
         Returns
         -------
-        str
-            Either 'static' or 'time_varying'
+        tuple
+            (data_format, modified_X) where data_format is 'static' or 'time_varying'
+            and modified_X is the potentially modified X DataFrame
         """
-        # Check if y has time-varying structure (multiple rows per unit_id)
-        if "unit_id" in y.columns:
-            units_with_multiple_obs = y.groupby("unit_id").size()
-            has_time_varying = (units_with_multiple_obs > 1).any()
-        else:
-            has_time_varying = False
+        assert "unit_id" in X
+        if y is not None:
+            assert "unit_id" in y
+            assert "time" in y
+            assert "event" in y
+            assert y["unit_id"].is_unique
 
-        # Check if X has time-varying structure (DataFrame with time column)
-        if "time" in X.columns:
-            has_time_varying = True
+        is_static = X["unit_id"].is_unique
+        is_time_varying = not is_static
 
-        return "time_varying" if has_time_varying else "static"
+        if is_time_varying:
+            unit_counts = X["unit_id"].value_counts()
+            assert not (unit_counts < 2).any()
+            assert "time" in X
 
-    def _expand_static_data(self, X, y):
-        """Convert static data to time-varying format using existing transformation functions.
+        modified_X = X.copy()
+        if is_static:
+            if "time" not in X.columns:
+                # Copy time from y to X
+                modified_X = X.merge(y[["unit_id", "time"]], on="unit_id", how="left")
+            else:
+                # Validate that time columns match when joining on unit_id
+                merged = X[["unit_id", "time"]].merge(
+                    y[["unit_id", "time"]], on="unit_id", suffixes=("_x", "_y")
+                )
+                if not (merged["time_x"] == merged["time_y"]).all():
+                    raise ValueError(
+                        "For static datasets, 'time' column in X must match 'time' column in y when joining on 'unit_id'"
+                    )
+            modified_X = self._static_to_minimal_time_varying_dataset(modified_X)
 
-        Parameters
-        ----------
-        X : pd.DataFrame
-            Static input features (with unit_id added if needed)
-        y : pd.DataFrame
-            Static survival data with time, event, and unit_id columns
+        modified_X = expand_overlapping_units_locf(modified_X)
 
-        Returns
-        -------
-        pd.DataFrame
-            Time-varying DataFrame ready for HazardIntegrator
-        """
-        # Combine X and y, excluding duplicate unit_id column
-        combined_df = pd.concat([X, y], axis=1)
-
-        # Use to_integration_df to create basic time-varying structure
-        integration_df = to_integration_df(combined_df, X.columns.to_list())
-        expanded_df = expand_overlapping_units_locf(
-            integration_df, unit_col="unit_id", time_col="time"
-        )
-
-        return expanded_df
-
-    def _prepare_time_varying_data(self, X, y):
-        """Prepare time-varying data for the HazardIntegrator.
-
-        Parameters
-        ----------
-        X : pd.DataFrame
-            Time-varying input features (with unit_id added if needed)
-        y : pd.DataFrame
-            Time-varying survival data with 'time', 'event', 'unit_id' columns
-
-        Returns
-        -------
-        pd.DataFrame
-            Prepared DataFrame for HazardIntegrator
-        """
-        # Ensure both X and y have unit_id (should be guaranteed by validation)
-        if "unit_id" not in X.columns or "unit_id" not in y.columns:
-            raise ValueError("Both X and y must have 'unit_id' column after validation")
-
-        # Combine X and y data, excluding duplicate columns
-        y_without_unit_id = y.drop("unit_id", axis=1) if "unit_id" in y.columns else y
-        combined_df = pd.concat([X, y_without_unit_id], axis=1)
-
-        # Use expand_overlapping_units_locf to ensure proper time-varying structure
-        expanded_df = expand_overlapping_units_locf(
-            combined_df, unit_col="unit_id", time_col="time"
-        )
-
-        return expanded_df
-
-    def _validate_time_varying_data(self, df):
-        """Validate that the DataFrame has the required structure for time-varying data.
-
-        Parameters
-        ----------
-        df : pd.DataFrame
-            DataFrame to validate
-
-        Raises
-        ------
-        ValueError
-            If required columns are missing or data is invalid
-        """
-        required_cols = ["unit_id", "time", "event"]
-        missing_cols = [col for col in required_cols if col not in df.columns]
-
-        if missing_cols:
-            raise ValueError(f"Missing required columns: {missing_cols}")
-
-        # Check for valid event values
-        if not df["event"].isin([0, 1]).all():
-            raise ValueError(
-                "Event column must contain only 0 (censored) and 1 (event) values"
-            )
-
-        # Check for valid time values
-        if (df["time"] < 0).any():
-            raise ValueError("Time values must be non-negative")
-
-        # Check for valid unit_id values
-        if df["unit_id"].isna().any():
-            raise ValueError("Unit IDs cannot be missing")
+        return ("static" if is_static else "time_varying", modified_X, y)
 
     def fit(self, X, y, auto_expand_time=True):
         """Fit the hazard integration survival model.
@@ -245,35 +184,18 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         if not isinstance(y, pd.DataFrame):
             raise ValueError("y must be a pandas DataFrame")
 
-        # Validate required columns in y
-        required_cols = ["time", "event"]
-        missing_cols = [col for col in required_cols if col not in y.columns]
-        if missing_cols:
-            raise ValueError(f"y must contain columns: {missing_cols}")
-
-        self.data_format_ = self._detect_data_format(X, y)
-
-        # Prepare data based on format
-        if self.data_format_ == "static" and auto_expand_time:
-            exp_df = self._expand_static_data(X, y)
-        else:
-            exp_df = self._prepare_time_varying_data(X, y)
-
-        # Validate the prepared data
-        self._validate_time_varying_data(exp_df)
-        self.x_time_df = exp_df.copy()
-        # Pre-compute event indicators for efficiency
-        self.event_indicators_ = exp_df.groupby("unit_id")["event"].last().values
-        self.n_samples_ = len(self.event_indicators_)
-
-        # Set feature count
-        self.n_features_in_ = len(
-            [col for col in exp_df.columns if col not in ["unit_id", "time", "event"]]
+        self.max_time = y["time"].max()
+        self.data_format_, self.exp_df, self.y = self._validate_and_convert_input_data(
+            X, y
         )
+
+        # Pre-compute event indicators for efficiency
+        self.event_indicators_ = self.y.groupby("unit_id")["event"].last().values
+        self.n_samples_ = len(self.event_indicators_)
 
         # Initialize hazard integrator with appropriate covariate columns
         covariate_cols = [
-            col for col in exp_df.columns if col not in ["unit_id", "time", "event"]
+            col for col in X.columns if col not in ["unit_id", "time", "event"]
         ]
 
         self.integrator_ = HazardIntegrator(
@@ -290,7 +212,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
             self.integrator_.train()
             self.integrator_.zero_grad()
 
-            out = self.integrator_(exp_df, return_survival_estimates=False)
+            out = self.integrator_(self.exp_df, return_survival_estimates=False)
 
             # Negative log-likelihood loss using pre-computed event indicators
             loss = (
@@ -308,3 +230,41 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
 
         self.integrator_.eval()
         return self
+
+
+def expand_overlapping_units_locf(
+    df: pd.DataFrame,
+    unit_col: str = "unit_id",
+    time_col: str = "time",
+):
+    # Unique times observed anywhere in the data, sorted
+    all_times = np.sort(df[time_col].unique())
+
+    # Min & max time for each unit
+    t_min = df.groupby(unit_col)[time_col].min()
+    t_max = df.groupby(unit_col)[time_col].max()
+
+    # Skeleton of unit–time combinations
+    pieces = []
+    for unit in t_min.index:
+        mask = (all_times >= t_min[unit]) & (all_times <= t_max[unit])
+        pieces.append(pd.DataFrame({unit_col: unit, time_col: all_times[mask]}))
+    skeleton = pd.concat(pieces, ignore_index=True)
+
+    # Merge and sort
+    out = (
+        skeleton.merge(df, on=[unit_col, time_col], how="left")
+        .sort_values([unit_col, time_col], kind="mergesort")
+        .reset_index(drop=True)
+    )
+
+    # Identify covariate columns (excluding unit and time)
+    covariate_cols = [col for col in df.columns if col not in {unit_col, time_col}]
+
+    # LOCF: forward fill per unit
+    out[covariate_cols] = out.groupby(unit_col)[covariate_cols].ffill()
+
+    # Optional: still fill any remaining NaNs (e.g., if a unit starts mid-way)
+    # out[covariate_cols] = out[covariate_cols].fillna(fill_value)
+
+    return out
