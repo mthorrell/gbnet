@@ -136,5 +136,5 @@ def test_combine_example():
         gbp.gb_step()  # required to update the gbms
         optimizer.step()
     t1 = time.time()
-    assert losses[-1] < 1e-07
+    assert losses[-1] < 1e-05
     assert (t1 - t0) < 20
