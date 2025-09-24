@@ -260,12 +260,12 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
 
         return exp_df, udf
 
-    def predict_survival(self, X):
-        exp_df, udf = self.predict_times(X)
+    def predict_survival(self, X, times=None):
+        exp_df, udf = self.predict_times(X, times)
         return exp_df[["unit_id", "time", "survival", "hazard"]]
 
-    def predict(self, X):
-        exp_df, udf = self.predict_times(X)
+    def predict(self, X, times=None):
+        exp_df, udf = self.predict_times(X, times)
 
         median = (
             exp_df[exp_df["survival"] > 0.5]
