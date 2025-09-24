@@ -262,13 +262,13 @@ sklearn_estimator = ordinal_regression.GBOrd(num_classes=10)
 
 ### Discrete Beta Survival
 
-`gbnet.models.survival.discrete_beta_survival.BetaSurvivalModel` provides discrete survival analysis using Beta distributions with gradient boosting. This model can handle censored data and supports both XGBoost and LightGBM backends. See [this notebook](https://github.com/mthorrell/gbnet/blob/main/examples/discrete_beta_survival_example.ipynb) for an example usage. This is an implementation of the model described in this [paper](https://proceedings.mlr.press/v146/hubbard21a.html).
+`gbnet.models.survival.discrete_survival.BetaSurvivalModel` provides discrete survival analysis using Beta distributions with gradient boosting. This model can handle censored data and supports both XGBoost and LightGBM backends. See [this notebook](https://github.com/mthorrell/gbnet/blob/main/examples/discrete_beta_survival_example.ipynb) for an example usage. This is an implementation of the model described in this [paper](https://proceedings.mlr.press/v146/hubbard21a.html).
 
 ```python
-from gbnet.models.survival import discrete_beta_survival
+from gbnet.models.survival import discrete_survival
 
 # Load survival data (time, event)
-survival_model = discrete_beta_survival.BetaSurvivalModel()
+survival_model = discrete_survival.BetaSurvivalModel()
 survival_model.fit(X, y)  # y should have 'time' and 'event' columns
 
 # Predict survival probabilities

@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from unittest import TestCase
 
-from gbnet.models.survival.discrete_beta_survival import (
+from gbnet.models.survival.discrete_survival import (
     BetaSurvivalModel,
     loadModule,
     create_data_matrix,

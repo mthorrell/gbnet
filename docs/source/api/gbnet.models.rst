@@ -34,10 +34,10 @@ gbnet.models.survival package
 .. toctree::
    :maxdepth: 4
 
-gbnet.models.survival.discrete\_beta\_survival module
-----------------------------------------------------
+gbnet.models.survival.discrete\_survival module
+-----------------------------------------------
 
-.. automodule:: gbnet.models.survival.discrete_beta_survival
+.. automodule:: gbnet.models.survival.discrete_survival
    :members:
    :show-inheritance:
    :undoc-members:
