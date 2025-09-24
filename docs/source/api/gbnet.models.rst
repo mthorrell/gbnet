@@ -42,6 +42,10 @@ gbnet.models.survival.discrete\_survival module
    :show-inheritance:
    :undoc-members:
 
+The survival submodule currently exposes two estimators:
+- ``BetaSurvivalModel``: Discrete-time survival using a Beta distribution to model a mixture of geometric distributions with GBMs.
+- ``ThetaSurvivalModel``: Discrete-time survival using a geometric distribution with a single parameter, theta, produced by a GBM.
+
 Module contents
 ---------------
 

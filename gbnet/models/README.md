@@ -53,4 +53,7 @@ probs = estimator.predict_proba(df[xcols])
 
 # Discrete Time Survival Analysis
 
-See [this notebook](https://github.com/mthorrell/gbnet/blob/main/examples/discrete_beta_survival_example.ipynb) for example usage.
+See [this notebook](https://github.com/mthorrell/gbnet/blob/main/examples/discrete_survival_examples.ipynb) for example usage.
+
+- BetaSurvivalModel: Discrete survival using a Beta distribution, mimicing a mixture of geometric distributions
+- ThetaSurvivalModel: Discrete survival using a geometric distribution with a single parameter, theta

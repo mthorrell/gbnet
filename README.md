@@ -37,7 +37,8 @@ There are two main components of `gbnet`:
 - (2) `gbnet.models` provides specific example estimators that accomplish things that were not previously possible using only XGBoost or LightGBM. Current models:
   - `Forecast` is a forecasting model similar in execution to Metas' Prophet algorithm. In the settings we tested, `gbnet.models.forecasting.Forecast` beats the performance of Meta's Prophet algorithm (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison).
   - `GBOrd` is Ordinal Regression using GBMs (both XGBoost and LightGBM supported). The complex loss function (with fitable parameters) is specified in PyTorch and put on top of either `XGBModule` or `LGBModule`.
-  - `BetaSurvivalModel` is a discrete time survival analysis model using Beta distributions with gradient boosting. It supports both XGBoost and LightGBM backends and can handle censored data.
+  - `BetaSurvivalModel` is a discrete-time survival analysis model using Beta distributions with gradient boosting.
+  - `ThetaSurvivalModel` is a discrete-time survival model that parameterizes a geometric distribution via a parameter theta that is the output of a a GBM.
   - Other models with plans to be integrated are more advanced survival analysis and NLP applications.
 
 ## Install and Docs
@@ -274,6 +275,10 @@ survival_model.fit(X, y)  # y should have 'time' and 'event' columns
 # Predict survival probabilities
 survival_probs = survival_model.predict_survival(X, times=[1, 5, 10])
 ```
+
+### Theta Survival
+
+`gbnet.models.survival.discrete_survival.ThetaSurvivalModel` models discrete survival with a geometric distribution (via a learned theta). It is a lightweight alternative to the Beta-based model.
 
 ## Contributing
 
