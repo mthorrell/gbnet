@@ -94,6 +94,8 @@ class HazardIntegrator(torch.nn.Module):
         # 5. Store all static tensors in the cache
         self.static_data = {
             "dmatrix": dmatrix,
+            "num_rows": X.shape[0],
+            "num_cols": X.shape[1],
             "unit_ids": unit_ids,
             "dt": dt,
             "same_unit": same_unit,
@@ -112,6 +114,8 @@ class HazardIntegrator(torch.nn.Module):
 
         # Unpack cached tensors for cleaner access
         dmatrix = self.static_data["dmatrix"]
+        num_rows = self.static_data["num_rows"]
+        num_features = self.static_data["num_cols"]
         unit_ids = self.static_data["unit_ids"]
         dt = self.static_data["dt"]
         same_unit = self.static_data["same_unit"]
@@ -120,7 +124,6 @@ class HazardIntegrator(torch.nn.Module):
 
         # Lazily initialize the gradient boosting module on the first forward pass
         if self.gb_module is None:
-            num_rows, num_features = dmatrix.num_row(), dmatrix.num_col()
             self.gb_module = self.Module(
                 num_rows, num_features, 1, params=self.params, min_hess=self.min_hess
             )
