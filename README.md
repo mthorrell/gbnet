@@ -1,6 +1,6 @@
 # GBNet
 [![DOI](https://joss.theoj.org/papers/10.21105/joss.08047/status.svg)](https://doi.org/10.21105/joss.08047)
-
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/gbnet?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/gbnet)
 
 
 Pytorch Modules for XGBoost and LightGBM
