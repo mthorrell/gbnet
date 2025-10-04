@@ -4,6 +4,7 @@ import torch
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.utils.validation import check_is_fitted
 
 from .hazard_integrator import HazardIntegrator
 
@@ -83,7 +84,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         self.params = params
         self.module_type = module_type
         self.min_hess = min_hess
-        self.integrator_ = None
+        # self.integrator_ = None
         self.losses_ = []
         self.data_format_ = None
 
@@ -238,6 +239,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         return self.integrator_(exp_df)
 
     def predict_times(self, X, times=None):
+        check_is_fitted(self, "integrator_")
         if not isinstance(X, pd.DataFrame):
             raise ValueError("X must be a pandas DataFrame")
 
@@ -261,10 +263,12 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         return exp_df, udf
 
     def predict_survival(self, X, times=None):
+        check_is_fitted(self, "integrator_")
         exp_df, udf = self.predict_times(X, times)
         return exp_df[["unit_id", "time", "survival", "hazard"]]
 
     def predict(self, X, times=None):
+        check_is_fitted(self, "integrator_")
         exp_df, udf = self.predict_times(X, times)
 
         median = (
