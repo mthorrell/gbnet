@@ -16,6 +16,7 @@ Key Features
 - Specific model implementations using XGBoost and LightGBM Modules
    - Forecasting
    - Ordinal Regression
+   - Survival analysis (discrete Beta & Theta models, continuous-time hazard integration)
 
 Installation
 -----------

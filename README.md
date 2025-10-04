@@ -17,6 +17,7 @@ Pytorch Modules for XGBoost and LightGBM
 4. [Models](#models)
    - [Forecasting](#forecasting)
    - [Ordinal Regression](#ordinal-regression)
+   - [Hazard Survival](#hazard-survival)
    - [Discrete Beta Survival](#discrete-beta-survival)
 5. [Contributing](#contributing)
 6. [Cite this work](#cite-this-work)
@@ -37,6 +38,7 @@ There are two main components of `gbnet`:
 - (2) `gbnet.models` provides specific example estimators that accomplish things that were not previously possible using only XGBoost or LightGBM. Current models:
   - `Forecast` is a forecasting model similar in execution to Metas' Prophet algorithm. In the settings we tested, `gbnet.models.forecasting.Forecast` beats the performance of Meta's Prophet algorithm (see [the forecasting PR](https://github.com/mthorrell/gbnet/pull/20) for a comparison).
   - `GBOrd` is Ordinal Regression using GBMs (both XGBoost and LightGBM supported). The complex loss function (with fitable parameters) is specified in PyTorch and put on top of either `XGBModule` or `LGBModule`.
+  - `HazardSurvivalModel` integrates gradient-boosted hazards over continuous time, supporting both static and longitudinal covariates through a hazard integrator backbone.
   - `BetaSurvivalModel` is a discrete-time survival analysis model using Beta distributions with gradient boosting.
   - `ThetaSurvivalModel` is a discrete-time survival model that parameterizes a geometric distribution via a parameter theta that is the output of a a GBM.
   - Other models with plans to be integrated are more advanced survival analysis and NLP applications.
@@ -259,6 +261,28 @@ See [this notebook](https://github.com/mthorrell/gbnet/blob/main/examples/ordina
 from gbnet.models import ordinal_regression
 
 sklearn_estimator = ordinal_regression.GBOrd(num_classes=10)
+```
+
+### Hazard Survival
+
+`HazardSurvivalModel` combines gradient-boosted hazard functions with a `HazardIntegrator` that performs continuous-time trapezoidal integration. Static covariates are automatically expanded, while longitudinal covariates can be supplied directly. The integrator returns survival curves, last-period hazard values, and expected survival times for each unit. See [this notebook](https://github.com/mthorrell/gbnet/blob/main/examples/hazard_survival_example.ipynb) for a worked example.
+
+```python
+import numpy as np
+
+from gbnet.models.survival import hazard_survival
+
+# X must include a 'unit_id' column and may contain time-varying covariates
+# y must be a DataFrame with ['unit_id', 'time', 'event'] columns
+
+model = hazard_survival.HazardSurvivalModel(module_type="XGBModule", nrounds=150)
+model.fit(X, y)
+
+# Predict survival probabilities over a grid of times
+survival = model.predict_survival(X, times=np.array([0, 5, 10, 15]))
+
+# Expected and median survival times per unit
+summary = model.predict(X)
 ```
 
 ### Discrete Beta Survival
