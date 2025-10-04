@@ -251,7 +251,7 @@ See the `ordinal regression comparison notebook <https://github.com/mthorrell/gb
 Hazard Survival
 ~~~~~~~~~~~~~~
 
-``gbnet.models.survival.hazard_survival.HazardSurvivalModel`` blends gradient-boosted hazard functions with trapezoidal integration so you can model continuous survival times. Static covariates are expanded, while longitudinal covariates can be supplied directly.
+``gbnet.models.survival.hazard_survival.HazardSurvivalModel`` blends gradient-boosted hazard functions with trapezoidal integration so you can model continuous survival times. Static covariates are expanded, while longitudinal covariates can be supplied directly. See the `hazard survival example notebook <https://github.com/mthorrell/gbnet/blob/main/examples/hazard_survival_example.ipynb>`_ for an end-to-end walkthrough.
 
 .. code-block:: python
 

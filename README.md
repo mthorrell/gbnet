@@ -265,7 +265,7 @@ sklearn_estimator = ordinal_regression.GBOrd(num_classes=10)
 
 ### Hazard Survival
 
-`HazardSurvivalModel` combines gradient-boosted hazard functions with a `HazardIntegrator` that performs continuous-time trapezoidal integration. Static covariates are automatically expanded, while longitudinal covariates can be supplied directly. The integrator returns survival curves, last-period hazard values, and expected survival times for each unit.
+`HazardSurvivalModel` combines gradient-boosted hazard functions with a `HazardIntegrator` that performs continuous-time trapezoidal integration. Static covariates are automatically expanded, while longitudinal covariates can be supplied directly. The integrator returns survival curves, last-period hazard values, and expected survival times for each unit. See [this notebook](https://github.com/mthorrell/gbnet/blob/main/examples/hazard_survival_example.ipynb) for a worked example.
 
 ```python
 import numpy as np
