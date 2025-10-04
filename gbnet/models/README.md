@@ -51,6 +51,26 @@ preds = estimator.predict(df[xcols], return_logits=False)
 probs = estimator.predict_proba(df[xcols])
 ```
 
+# Continuous-Time Survival Analysis
+
+The `HazardSurvivalModel` pairs gradient-boosted hazards with a `HazardIntegrator` that performs trapezoidal integration. It supports both static covariates (expanded to piecewise-constant trajectories) and time-varying covariates supplied directly.
+
+```python
+from gbnet.models.survival import hazard_survival
+
+# X must include a 'unit_id' column and may contain time-varying covariates
+# y must contain ['unit_id', 'time', 'event'] columns
+
+model = hazard_survival.HazardSurvivalModel(module_type="XGBModule", nrounds=150)
+model.fit(X, y)
+
+# Survival curves over specific times
+survival_df = model.predict_survival(X, times=np.array([0, 5, 10, 15]))
+
+# Expected and median survival times per unit
+summary_df = model.predict(X)
+```
+
 # Discrete Time Survival Analysis
 
 See [this notebook](https://github.com/mthorrell/gbnet/blob/main/examples/discrete_survival_examples.ipynb) for example usage.

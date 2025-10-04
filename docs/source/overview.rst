@@ -16,7 +16,9 @@ There are two main components of ``gbnet``:
 
    - ``Forecast`` is a forecasting model similar in execution to Metas' Prophet algorithm. In the settings we tested, ``gbnet.models.forecasting.Forecast`` beats the performance of Meta's Prophet algorithm.
    - ``GBOrd`` is Ordinal Regression using GBMs (both XGBoost and LightGBM supported). The complex loss function (with fitable parameters) is specified in PyTorch and put on top of either ``XGBModule`` or ``LGBModule``.
+   - ``HazardSurvivalModel`` fuses gradient-boosted hazards with continuous-time integration to support both static and longitudinal covariates in survival analysis.
    - ``BetaSurvivalModel`` is a discrete time survival analysis model using Beta distributions with gradient boosting. It supports both XGBoost and LightGBM backends and can handle censored data.
+   - ``ThetaSurvivalModel`` models discrete survival using a geometric distribution with a single parameter, theta, produced by a GBM. It is a lightweight alternative to the Beta-based model.
    - Other models with plans to be integrated are more advanced survival analysis and NLP applications.
 
 Installation
@@ -245,6 +247,21 @@ See the `ordinal regression comparison notebook <https://github.com/mthorrell/gb
    from gbnet.models import ordinal_regression
 
    sklearn_estimator = ordinal_regression.GBOrd(num_classes=10)
+
+Hazard Survival
+~~~~~~~~~~~~~~
+
+``gbnet.models.survival.hazard_survival.HazardSurvivalModel`` blends gradient-boosted hazard functions with trapezoidal integration so you can model continuous survival times. Static covariates are expanded, while longitudinal covariates can be supplied directly.
+
+.. code-block:: python
+
+   from gbnet.models.survival import hazard_survival
+
+   model = hazard_survival.HazardSurvivalModel(module_type="XGBModule", nrounds=150)
+   model.fit(X, y)  # y needs ['unit_id', 'time', 'event']
+
+   survival_df = model.predict_survival(X, times=[0, 5, 10, 15])
+   summary = model.predict(X)
 
 Discrete Beta Survival
 ~~~~~~~~~~~~~~~~~~~~
