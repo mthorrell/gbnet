@@ -78,7 +78,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         min_hess=0.0,
     ):
         if params is None:
-            params = {}
+            params = {"max_delta_step": 1}
 
         self.nrounds = nrounds
         self.params = params
