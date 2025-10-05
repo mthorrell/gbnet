@@ -416,23 +416,22 @@ class TestHazardSurvivalModelIntegration(TestCase):
         for i in range(1, len(survival_curve)):
             self.assertLessEqual(survival_curve[i], survival_curve[i - 1] + 1e-5)
 
-    # TODO: fix time varying inputs
-    # def test_time_varying_data_integration(self):
-    #     """Test integration with time-varying data."""
-    #     model = HazardSurvivalModel(nrounds=10, module_type="XGBModule")
-    #     model.fit(self.X_time_varying, self.y)
+    def test_time_varying_data_integration(self):
+        """Test integration with time-varying data."""
+        model = HazardSurvivalModel(nrounds=10, module_type="XGBModule")
+        model.fit(self.X_time_varying, self.y)
 
-    #     # Test predictions
-    #     times = [1.0, 2.0, 3.0]
-    #     survival_probs = model.predict_survival(self.X_time_varying[:10], times)
-    #     expected_times = model.predict(self.X_time_varying[:10])
+        # Test predictions
+        times = np.array([1.0, 2.0, 3.0])
+        survival_probs = model.predict_survival(self.X_time_varying[:9], times)
+        expected_times = model.predict(self.X_time_varying[:9])
 
-    #     # Check shapes and values
-    #     self.assertEqual(survival_probs.shape, (10, len(times)))
-    #     self.assertEqual(expected_times.shape, (10,))
-    #     self.assertTrue(np.all(survival_probs >= 0))
-    #     self.assertTrue(np.all(survival_probs <= 1))
-    #     self.assertTrue(np.all(expected_times > 0))
+        # Check shapes and values
+        self.assertEqual(survival_probs.shape, (3 * (len(times) + 1), 4))
+        self.assertEqual(expected_times.shape, (3, 3))
+        self.assertTrue(np.all(survival_probs >= 0))
+        self.assertTrue(np.all(survival_probs["survival"] <= 1))
+        self.assertTrue(np.all(expected_times >= 0))
 
     def test_data_format_detection(self):
         """Test that data format is correctly detected."""
