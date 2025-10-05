@@ -125,7 +125,7 @@ class TestHazardSurvivalModel(TestCase):
         model = HazardSurvivalModel()
 
         self.assertEqual(model.module_type, "XGBModule")
-        self.assertEqual(model.nrounds, 100)
+        self.assertEqual(model.nrounds, 50)
         self.assertEqual(model.min_hess, 0.0)
         self.assertEqual(len(model.losses_), 0)
         self.assertIsNone(model.data_format_)
