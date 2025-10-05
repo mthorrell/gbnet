@@ -72,17 +72,20 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
 
     def __init__(
         self,
-        nrounds=100,
+        nrounds=None,
         params=None,
         module_type="XGBModule",
         min_hess=0.0,
     ):
         if params is None:
-            params = {"max_delta_step": 1}
+            params = {"max_delta_step": 5}
 
-        self.nrounds = nrounds
         self.params = params
         self.module_type = module_type
+        # Default boosting rounds depend on module type
+        if nrounds is None:
+            nrounds = 50 if module_type == "XGBModule" else 100
+        self.nrounds = nrounds
         self.min_hess = min_hess
         # self.integrator_ = None
         self.losses_ = []
