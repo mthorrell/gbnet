@@ -78,7 +78,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         min_hess=0.0,
     ):
         if params is None:
-            params = {"max_delta_step": 5}
+            params = {"max_delta_step": 1 if module_type == "XGBModule" else 5}
 
         self.params = params
         self.module_type = module_type
