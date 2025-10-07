@@ -278,7 +278,7 @@ class TestBetaSurvivalModel(TestCase):
         model = BetaSurvivalModel()
 
         self.assertEqual(model.module_type, "XGBModule")
-        self.assertEqual(model.nrounds, 100)  # Default for XGBModule
+        self.assertEqual(model.nrounds, 50)  # Default for XGBModule
         self.assertEqual(model.min_hess, 0.0)
         self.assertIsNone(model.model_)
         self.assertEqual(len(model.losses_), 0)
@@ -534,7 +534,7 @@ class TestThetaSurvivalModel(TestCase):
         model = ThetaSurvivalModel()
 
         self.assertEqual(model.module_type, "XGBModule")
-        self.assertEqual(model.nrounds, 100)
+        self.assertEqual(model.nrounds, 50)
         self.assertEqual(model.min_hess, 0.0)
         self.assertIsNone(model.model_)
         self.assertEqual(len(model.losses_), 0)
