@@ -110,9 +110,9 @@ class GBLinear(BaseGBModule):
             else:
                 X = self.input
 
-            updated_B = ridge_regression(
-                X, (self.g / self.h).detach().numpy(), self.lambd
-            )
+            h = torch.nan_to_num(self.h, nan=1.0)
+
+            updated_B = ridge_regression(X, (self.g / h).detach().numpy(), self.lambd)
 
             updated_weight_dir = updated_B[1:, :].T
             self.linear.weight -= self.lr * torch.Tensor(updated_weight_dir)
