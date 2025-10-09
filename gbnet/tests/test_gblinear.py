@@ -102,3 +102,36 @@ def test_gblinear_no_bias():
     x = torch.randn(4, 3)
     out = model(x)
     assert out.shape == (4, 2)
+
+
+def test_gblinear_handles_nan_hessian():
+    """Ensure gb_step works when h contains NaNs by replacing with 1.0."""
+    torch.manual_seed(0)
+    model = GBLinear(input_dim=3, output_dim=1)
+    x = torch.randn(5, 3)
+    y = torch.randn(5, 1)
+
+    criterion = nn.MSELoss()
+
+    # Forward/backward to populate FX.grad, then compute g and h
+    out = model(x)
+    loss = criterion(out, y)
+    loss.backward(create_graph=True)
+    model.gb_calc()
+
+    # Inject a NaN into the Hessian
+    h_with_nan = model.h.clone()
+    h_with_nan[0, 0] = float("nan")
+    model.h = h_with_nan
+
+    # Capture initial params
+    init_w = model.linear.weight.clone()
+    init_b = model.linear.bias.clone()
+
+    # Should not raise and should update parameters with finite values
+    model.gb_step()
+
+    assert not torch.allclose(model.linear.weight, init_w)
+    assert not torch.allclose(model.linear.bias, init_b)
+    assert torch.isfinite(model.linear.weight).all()
+    assert torch.isfinite(model.linear.bias).all()
