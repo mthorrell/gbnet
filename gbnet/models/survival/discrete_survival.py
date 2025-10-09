@@ -145,9 +145,9 @@ class BetaSurvivalModel(BaseEstimator, RegressorMixin):
         min_hess=0.0,
     ):
         if params is None:
-            params = {"max_delta_step": 5}
+            params = {"max_delta_step": 1 if module_type == "XGBModule" else 5}
         if nrounds is None:
-            nrounds = 100
+            nrounds = 50 if module_type == "XGBModule" else 100
 
         self.nrounds = nrounds
         self.params = params
@@ -418,9 +418,9 @@ class ThetaSurvivalModel(BaseEstimator, RegressorMixin):
         min_hess=0.0,
     ):
         if params is None:
-            params = {"max_delta_step": 5}
+            params = {"max_delta_step": 1 if module_type == "XGBModule" else 5}
         if nrounds is None:
-            nrounds = 100
+            nrounds = 50 if module_type == "XGBModule" else 100
 
         self.nrounds = nrounds
         self.params = params
