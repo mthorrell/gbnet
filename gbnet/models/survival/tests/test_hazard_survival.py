@@ -124,8 +124,8 @@ class TestHazardSurvivalModel(TestCase):
         """Test initialization with default parameters."""
         model = HazardSurvivalModel()
 
-        self.assertEqual(model.module_type, "XGBModule")
-        self.assertEqual(model.nrounds, 50)
+        self.assertEqual(model.module_type, "LGBModule")
+        self.assertEqual(model.nrounds, 100)
         self.assertEqual(model.min_hess, 0.0)
         self.assertEqual(len(model.losses_), 0)
         self.assertIsNone(model.data_format_)
@@ -257,7 +257,7 @@ class TestHazardSurvivalModel(TestCase):
         # Test edge cases with small dataset
         X_small = self.X_static[:2]
         y_small = self.y[:2]
-        small_model = HazardSurvivalModel(nrounds=5)
+        small_model = HazardSurvivalModel(nrounds=5, module_type="XGBModule")
         small_model.fit(X_small, y_small)
 
         # Test prediction with single time point
