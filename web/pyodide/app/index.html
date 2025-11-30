@@ -314,8 +314,7 @@
     <header>
       <h1>GBNet Time Series Forecaster</h1>
       <p>
-        Load a dataset with <code>ds</code> (timestamp) and <code>y</code> (target),
-        choose a forecast horizon, and run an XGBoost + Trend forecaster entirely in your browser.
+        Load a dataset with <code>ds</code> (timestamp) and <code>y</code> (target), choose a forecast horizon, and run an XGBoost + Trend forecaster entirely in your browser.
       </p>
     </header>
 
@@ -392,6 +391,12 @@
           </div>
 
           <div class="meta" id="results-meta"></div>
+
+          <div class="field field-inline" style="margin-bottom: 0.4rem;">
+            <span class="field-help">View window:</span>
+            <button id="view-all-btn" class="secondary">Full history</button>
+            <button id="view-forecast-btn" class="secondary">Focus forecast</button>
+          </div>
 
           <div class="chart-container">
             <canvas id="chart-forecast" aria-label="Forecast chart"></canvas>

@@ -12,6 +12,8 @@ const resultsEl = document.getElementById("results");
 const resultsMetaEl = document.getElementById("results-meta");
 const forecastTableEl = document.getElementById("forecast-table");
 const copyForecastBtn = document.getElementById("copy-forecast-btn");
+const viewAllBtn = document.getElementById("view-all-btn");
+const viewForecastBtn = document.getElementById("view-forecast-btn");
 const fileInputEl = document.getElementById("file-input");
 const demoBtnEl = document.getElementById("demo-data-btn");
 const horizonInputEl = document.getElementById("horizon-input");
@@ -25,6 +27,7 @@ let currentDatasetPath = null;
 let currentDatasetLabel = null;
 let forecastChart = null;
 let lastResult = null;
+let chartViewMode = "forecast"; // "forecast" (zoomed) or "all"
 
 const setStatus = (msg) => {
   if (statusEl) statusEl.textContent = msg;
@@ -185,34 +188,97 @@ const renderChart = (data) => {
     ...train.map((d) => (d.y != null ? d.y : null)),
     ...forecast.map(() => null),
   ];
+  const nTrain = train.length;
   const yhat = [
     ...train.map((d) => (d.yhat != null ? d.yhat : null)),
     ...forecast.map((d) => (d.yhat != null ? d.yhat : null)),
   ];
 
+  const hasUncertainty = forecast.some(
+    (d) => d.yhat_lower != null || d.yhat_upper != null,
+  );
+
+  const total = labels.length;
+  const nForecast = forecast.length;
+
+  const lowerBand = hasUncertainty
+    ? [
+        ...train.map(() => null),
+        ...forecast.map((d) =>
+          d.yhat_lower != null ? d.yhat_lower : d.yhat != null ? d.yhat : null,
+        ),
+      ]
+    : null;
+
+  const upperBand = hasUncertainty
+    ? [
+        ...train.map(() => null),
+        ...forecast.map((d) =>
+          d.yhat_upper != null ? d.yhat_upper : d.yhat != null ? d.yhat : null,
+        ),
+      ]
+    : null;
+
   const dataConfig = {
     labels,
-    datasets: [
-      {
-        label: "Actual",
-        data: actual,
-        borderColor: "#4b5563",
-        backgroundColor: "rgba(75, 85, 99, 0.15)",
-        tension: 0.15,
-        pointRadius: 0,
-        spanGaps: true,
-      },
-      {
-        label: "Forecast",
-        data: yhat,
-        borderColor: "#0070f3",
-        backgroundColor: "rgba(0, 112, 243, 0.12)",
-        tension: 0.15,
-        pointRadius: 0,
-        spanGaps: true,
-      },
-    ],
+    datasets: [],
   };
+
+  dataConfig.datasets.push({
+    label: "Actual",
+    data: actual,
+    borderColor: "#4b5563",
+    backgroundColor: "rgba(75, 85, 99, 0.15)",
+    tension: 0.15,
+    pointRadius: 0,
+    spanGaps: true,
+  });
+
+  dataConfig.datasets.push({
+    label: "Forecast",
+    data: yhat,
+    borderColor: "#0070f3",
+    backgroundColor: "rgba(0, 112, 243, 0.12)",
+    tension: 0.15,
+    pointRadius: 0,
+    spanGaps: true,
+  });
+
+  if (hasUncertainty && lowerBand && upperBand) {
+    // Lower bound (used as the base for the filled band)
+    dataConfig.datasets.push({
+      label: "",
+      data: lowerBand,
+      borderColor: "rgba(37, 99, 235, 0)", // invisible line
+      backgroundColor: "rgba(37, 99, 235, 0)", // no fill here
+      tension: 0.15,
+      pointRadius: 0,
+      spanGaps: true,
+    });
+
+    // Upper bound, filled down to the previous dataset (lower bound)
+    dataConfig.datasets.push({
+      label: "95% interval",
+      data: upperBand,
+      borderColor: "rgba(37, 99, 235, 0)",
+      backgroundColor: "rgba(59, 130, 246, 0.15)",
+      fill: "-1",
+      tension: 0.15,
+      pointRadius: 0,
+      spanGaps: true,
+    });
+  }
+
+  // Configure the default x-axis window.
+  // "forecast" mode: forecast span occupies roughly the last 50% of the plot.
+  // "all" mode: show full history.
+  let xMin = undefined;
+  let xMax = undefined;
+  if (chartViewMode === "forecast" && nForecast > 0 && total > 0) {
+    const visibleSpan = Math.min(total, Math.max(nForecast * 2, 1));
+    xMax = total - 1;
+    xMin = Math.max(0, xMax - visibleSpan + 1);
+  }
 
   const options = {
     responsive: true,
@@ -224,6 +290,8 @@ const renderChart = (data) => {
           display: true,
           text: "Time",
         },
+        min: xMin,
+        max: xMax,
       },
       y: {
         display: true,
@@ -599,6 +667,24 @@ if (demoBtnEl) {
 if (runForecastBtn) {
   runForecastBtn.addEventListener("click", () => {
     handleRunForecast();
+  });
+}
+
+if (viewAllBtn) {
+  viewAllBtn.addEventListener("click", () => {
+    chartViewMode = "all";
+    if (lastResult) {
+      renderChart(lastResult);
+    }
+  });
+}
+
+if (viewForecastBtn) {
+  viewForecastBtn.addEventListener("click", () => {
+    chartViewMode = "forecast";
+    if (lastResult) {
+      renderChart(lastResult);
+    }
   });
 }
 
