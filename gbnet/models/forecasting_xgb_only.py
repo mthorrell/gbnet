@@ -89,25 +89,13 @@ class NumpyGBLinear:
             self.weight = self.weight - self.lr * direction
 
 
-def additive_squarederror_obj(offset: np.ndarray):
-    offset = np.asarray(offset, dtype=float)
-
-    def _obj(preds, dtrain):
-        y = dtrain.get_label()
-        residual = preds + offset - y
-        grad = residual
-        hess = np.ones_like(residual)
-        return grad, hess
-
-    return _obj
-
-
 class ForecastXGBOnly(BaseEstimator, RegressorMixin):
     """
     XGBoost-only forecaster with a GBLinear trend and no changepoints.
 
-    Mirrors the interface of the torch-based Forecast but removes torch/LightGBM
-    and relies on raw XGBoost plus a torch-free linear trend.
+    Mirrors the torch-based Forecast (when using XGB and zero changepoints) but removes
+    torch/LightGBM and relies on raw XGBoost plus a torch-free linear trend. The booster
+    and trend share the same gradients every iteration so they are updated simultaneously.
     """
 
     def __init__(
@@ -123,11 +111,15 @@ class ForecastXGBOnly(BaseEstimator, RegressorMixin):
             "max_depth": 3,
             "lambda": 1,
             "alpha": 8,
-            "objective": "reg:squarederror",
-            "base_score": 0,
         }
-        if params:
-            self.params.update(params)
+        params = params or {}
+        if "objective" in params:
+            raise ValueError("objective should not be specified in params")
+        if "base_score" in params:
+            raise ValueError("base_score should not be specified in params")
+        self.params.update(params)
+        self.params["objective"] = "reg:squarederror"
+        self.params["base_score"] = 0
 
         self.linear_params = {"min_hess": 0.0, "lambd": 0.1, "lr": 0.9}
         if linear_params:
@@ -138,51 +130,53 @@ class ForecastXGBOnly(BaseEstimator, RegressorMixin):
 
         self.trend = None
         self.booster = None
+        self.n_completed_boost_rounds = 0
 
     def fit(self, X, y=None):
         df = X.copy()
         df["y"] = y
         features = _make_time_features(df)
 
-        self.trend = NumpyGBLinear(1, 1, **self.linear_params)
-        self.trend.initialize(features["numeric_dt"].values.reshape([-1, 1]), df["y"])
-
+        y_values = np.asarray(df["y"], dtype=float)
+        time_values = features["numeric_dt"].to_numpy(dtype=float).reshape([-1, 1])
         season_feats = np.array(
             features[["year", "month", "day", "hour", "minute", "weekday"]]
         )
-        dtrain = xgb.DMatrix(season_feats, label=np.array(df["y"]))
+
+        self.trend = NumpyGBLinear(1, 1, **self.linear_params)
+        self.trend.initialize(time_values, y_values)
+
+        dtrain = xgb.DMatrix(season_feats, label=np.zeros_like(y_values))
+        booster = xgb.train(self.params, dtrain, num_boost_round=0)
 
         self.losses_ = []
-        booster = None
+        n_completed_boost_rounds = 0
         for _ in range(self.nrounds):
-            trend_pred = self.trend.predict(
-                features["numeric_dt"].values.reshape([-1, 1])
-            ).flatten()
-
-            obj = additive_squarederror_obj(trend_pred)
-            booster = xgb.train(
-                self.params,
-                dtrain,
-                num_boost_round=1,
-                obj=obj,
-                xgb_model=booster,
-                verbose_eval=False,
-            )
-
+            trend_pred = self.trend.predict(time_values).flatten()
             season_pred = booster.predict(dtrain)
             yhat = trend_pred + season_pred
 
-            grad = yhat - df["y"].values
-            hess = np.ones_like(grad)
+            # Shared gradients mirror the torch-based training loop
+            residual = yhat - y_values
+            grad = 2.0 * residual
+            hess = np.full_like(grad, 2.0)
+
+            self.losses_.append(float(np.mean(residual**2)))
+
             self.trend.gb_step(
-                features["numeric_dt"].values.reshape([-1, 1]),
+                time_values,
                 grad.reshape([-1, 1]),
                 hess.reshape([-1, 1]),
             )
 
-            self.losses_.append(float(np.mean((yhat - df["y"].values) ** 2)))
+            g_boost, h_boost = _format_grad_hess(grad, hess)
+            _boost_one_round(
+                booster, dtrain, g_boost, h_boost, n_completed_boost_rounds
+            )
+            n_completed_boost_rounds += 1
 
         self.booster = booster
+        self.n_completed_boost_rounds = n_completed_boost_rounds
         self._n_features_in_ = season_feats.shape[1]
         self.n_features_in_ = season_feats.shape[1]
 
@@ -231,6 +225,31 @@ class ForecastXGBOnly(BaseEstimator, RegressorMixin):
             c for c in ["ds", "y", "yhat", "trend", "season", "var_est"] if c in df
         ]
         return df[return_cols].copy()
+
+
+def _format_grad_hess(grad: np.ndarray, hess: np.ndarray):
+    grad = np.asarray(grad, dtype=float)
+    hess = np.asarray(hess, dtype=float)
+
+    if grad.ndim == 1:
+        grad = grad.reshape([-1, 1])
+    if hess.ndim == 1:
+        hess = hess.reshape([-1, 1])
+
+    if xgb.__version__ >= "2.1.0":
+        return (
+            grad.reshape([grad.shape[0], -1]),
+            hess.reshape([hess.shape[0], -1]),
+        )
+
+    return grad.reshape([-1, 1]), hess.reshape([-1, 1])
+
+
+def _boost_one_round(booster, dtrain, grad, hess, iteration):
+    if xgb.__version__ <= "2.0.3":
+        booster.boost(dtrain, grad, hess)
+    else:
+        booster.boost(dtrain, iteration + 1, grad, hess)
 
 
 def ridge_regression(X, y, lambd):
