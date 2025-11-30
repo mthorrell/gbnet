@@ -103,7 +103,7 @@ class ForecastXGBOnly(BaseEstimator, RegressorMixin):
         nrounds=50,
         params=None,
         linear_params=None,
-        estimate_uncertainty=False,
+        estimate_uncertainty=True,
     ):
         self.nrounds = nrounds
         self.params = {
@@ -114,9 +114,9 @@ class ForecastXGBOnly(BaseEstimator, RegressorMixin):
         }
         params = params or {}
         if "objective" in params:
-            raise ValueError("objective should not be specified in params")
+            assert params["objective"] == "reg:squarederror"
         if "base_score" in params:
-            raise ValueError("base_score should not be specified in params")
+            assert params["base_score"] == 0
         self.params.update(params)
         self.params["objective"] = "reg:squarederror"
         self.params["base_score"] = 0
@@ -131,7 +131,6 @@ class ForecastXGBOnly(BaseEstimator, RegressorMixin):
         self.trend = None
         self.booster = None
         self.n_completed_boost_rounds = 0
-        print(self.estimate_uncertainty)
 
     def fit(self, X, y=None):
         df = X.copy()
