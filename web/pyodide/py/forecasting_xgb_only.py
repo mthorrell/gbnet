@@ -320,3 +320,90 @@ def _mle_G(r, h, S2, bracket_pad=1.0):
     b = max(np.max((r**2 - S2) / (h + 1e-12)), 1.0) + bracket_pad
     sol = root_scalar(score, bracket=(a, b), method="brentq")
     return sol.root, sol
+
+
+def run_forecast_from_df(df: pd.DataFrame, horizon: int = 12):
+    """
+    Convenience helper for Pyodide: fit ForecastXGBOnly on a DataFrame and
+    return JSON-serializable training + forecast outputs.
+
+    The DataFrame must contain `ds` (datetime-like) and `y` columns.
+    """
+    df = df.copy()
+    if "ds" not in df.columns:
+        raise ValueError("Input DataFrame must contain a 'ds' column.")
+    if "y" not in df.columns:
+        raise ValueError("Input DataFrame must contain a 'y' column.")
+
+    df["ds"] = pd.to_datetime(df["ds"], errors="coerce")
+    # Drop any rows where ds or y is missing/invalid
+    df = df.dropna(subset=["ds", "y"])
+    if df.shape[0] == 0:
+        raise ValueError(
+            "No rows remain after dropping rows with missing 'ds' or 'y' values."
+        )
+
+    m = ForecastXGBOnly(nrounds=50)
+    m.fit(df, df["y"])
+
+    train_pred = m.predict(df)
+
+    if "var_est" in train_pred.columns:
+        std = np.sqrt(train_pred["var_est"].to_numpy())
+        z = 1.96
+        train_pred["yhat_lower"] = train_pred["yhat"] - z * std
+        train_pred["yhat_upper"] = train_pred["yhat"] + z * std
+
+    if df["ds"].shape[0] >= 2:
+        diffs = df["ds"].sort_values().diff().dropna()
+        if not diffs.empty:
+            # Use the most common step size
+            step = diffs.mode().iloc[0]
+        else:
+            step = pd.Timedelta(days=1)
+    else:
+        step = pd.Timedelta(days=1)
+
+    last_ds = df["ds"].max()
+    future_ds = [last_ds + step * (i + 1) for i in range(int(horizon))]
+    future = pd.DataFrame({"ds": future_ds})
+
+    forecast = m.predict(future)
+    if "var_est" in forecast.columns:
+        std_f = np.sqrt(forecast["var_est"].to_numpy())
+        z = 1.96
+        forecast["yhat_lower"] = forecast["yhat"] - z * std_f
+        forecast["yhat_upper"] = forecast["yhat"] + z * std_f
+
+    forecast_ds_min = forecast["ds"].min().strftime("%Y-%m-%d")
+    forecast_ds_max = forecast["ds"].max().strftime("%Y-%m-%d")
+
+    meta = {
+        "horizon": int(horizon),
+        "n_obs": int(df.shape[0]),
+        "ds_min": df["ds"].min().strftime("%Y-%m-%d"),
+        "ds_max": df["ds"].max().strftime("%Y-%m-%d"),
+        "forecast_ds_min": forecast_ds_min,
+        "forecast_ds_max": forecast_ds_max,
+    }
+
+    out = {
+        "meta": meta,
+        "train": train_pred.assign(
+            ds=lambda d: d["ds"].dt.strftime("%Y-%m-%d")
+        ).to_dict("records"),
+        "forecast": forecast.assign(
+            ds=lambda d: d["ds"].dt.strftime("%Y-%m-%d")
+        ).to_dict("records"),
+    }
+    return out
+
+
+def run_forecast_from_csv(path: str, horizon: int = 12):
+    """
+    Read a CSV from `path`, expecting `ds` and `y` columns, and run a forecast.
+
+    Designed for use from the browser via Pyodide.
+    """
+    df = pd.read_csv(path)
+    return run_forecast_from_df(df, horizon=horizon)

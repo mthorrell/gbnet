@@ -9,15 +9,43 @@ const statusEl = document.getElementById("status");
 const logEl = document.getElementById("log");
 const bootBtn = document.getElementById("boot");
 const resultsEl = document.getElementById("results");
+const resultsMetaEl = document.getElementById("results-meta");
+const forecastTableEl = document.getElementById("forecast-table");
+const copyForecastBtn = document.getElementById("copy-forecast-btn");
+const fileInputEl = document.getElementById("file-input");
+const demoBtnEl = document.getElementById("demo-data-btn");
+const horizonInputEl = document.getElementById("horizon-input");
+const runForecastBtn = document.getElementById("run-forecast-btn");
+const dataSummaryEl = document.getElementById("data-summary");
+const errorsEl = document.getElementById("errors");
+const chartCanvas = document.getElementById("chart-forecast");
+
+let pyodideInstance = null;
+let currentDatasetPath = null;
+let currentDatasetLabel = null;
+let forecastChart = null;
+let lastResult = null;
 
 const setStatus = (msg) => {
   if (statusEl) statusEl.textContent = msg;
+};
+
+const setError = (msg) => {
+  if (!errorsEl) return;
+  if (msg) {
+    errorsEl.textContent = msg;
+    errorsEl.style.display = "block";
+  } else {
+    errorsEl.textContent = "";
+    errorsEl.style.display = "none";
+  }
 };
 
 const appendLog = (msg) => {
   if (!logEl) return;
   const stamp = new Date().toISOString();
   logEl.textContent += `[${stamp}] ${msg}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
 };
 
 const ensureDir = (fs, path) => {
@@ -49,73 +77,298 @@ print("ForecastXGBOnly import OK:", ForecastXGBOnly)
 `);
 };
 
-const runDemoForecast = async (pyodide) => {
-  setStatus("Fetching sample data...");
-  await writeTextFile(pyodide, DATASET_URL, "/data/air_passengers.csv");
-
-  setStatus("Training and forecasting...");
-  const result = await pyodide.runPythonAsync(`
-import pandas as pd
-from forecasting_xgb_only import ForecastXGBOnly
-
-df = pd.read_csv("/data/air_passengers.csv")
-df["ds"] = pd.to_datetime(df["ds"])
-
-m = ForecastXGBOnly(nrounds=50)
-m.fit(df, df["y"])
-
-future = pd.DataFrame({
-    "ds": pd.date_range(
-        df["ds"].max() + pd.offsets.MonthBegin(1),
-        periods=12,
-        freq="MS",
-    )
-})
-
-forecast = m.predict(future)
-train_pred = m.predict(df)
-
-out = {
-    "train_tail": train_pred.tail(5)
-        .assign(ds=lambda d: d["ds"].dt.strftime("%Y-%m-%d"))
-        [["ds", "y", "yhat"]]
-        .to_dict("records"),
-    "forecast": forecast
-        .assign(ds=lambda d: d["ds"].dt.strftime("%Y-%m-%d"))
-        [["ds", "yhat"]]
-        .to_dict("records"),
-}
-out
-`);
-
-  const jsResult = result.toJs({ dict: true });
-  renderResults(jsResult);
-  result.destroy?.();
-};
-
-const renderResults = (data) => {
+const renderResultsText = (data) => {
   if (!resultsEl) return;
-  const trainRows = (data?.train_tail || [])
-    .map((row) => `${row.ds}: y=${row.y}, yhat=${row.yhat.toFixed(2)}`)
-    .join("\n");
-  const forecastRows = (data?.forecast || [])
-    .map((row) => `${row.ds}: yhat=${row.yhat.toFixed(2)}`)
+  if (!data) {
+    resultsEl.textContent = "(no results)";
+    return;
+  }
+
+  const meta = data.meta || {};
+  const train = data.train || [];
+  const forecast = data.forecast || [];
+
+  const horizon = meta.horizon ?? "(unknown)";
+  const nObs = meta.n_obs ?? "(unknown)";
+  const dsMin = meta.ds_min;
+  const dsMax = meta.ds_max;
+  const fMin = meta.forecast_ds_min;
+  const fMax = meta.forecast_ds_max;
+
+  const trainTail = train.slice(-5);
+  const forecastHead = forecast.slice(0, 5);
+
+  const trainRows = trainTail
+    .map((row) => {
+      const y = row.y != null ? row.y : "?";
+      const yhat = row.yhat != null ? Number(row.yhat).toFixed(2) : "?";
+      return `${row.ds}: y=${y}, yhat=${yhat}`;
+    })
     .join("\n");
 
-  resultsEl.textContent = [
+  const forecastRows = forecastHead
+    .map((row) => {
+      const yhat = row.yhat != null ? Number(row.yhat).toFixed(2) : "?";
+      return `${row.ds}: yhat=${yhat}`;
+    })
+    .join("\n");
+
+  const lines = [
+    `Meta: n_obs=${nObs}, horizon=${horizon}`,
+    dsMin && dsMax ? `Training range: ${dsMin} → ${dsMax}` : "",
+    fMin && fMax ? `Forecast range: ${fMin} → ${fMax}` : "",
+    "",
     "Recent fit (tail of training):",
     trainRows || "(none)",
     "",
-    "Forecast (next 12 months):",
+    "Forecast (first steps):",
     forecastRows || "(none)",
-  ].join("\n");
+  ].filter(Boolean);
+
+  resultsEl.textContent = lines.join("\n");
+};
+
+const renderMeta = (data) => {
+  if (!resultsMetaEl) return;
+  resultsMetaEl.textContent = "";
+  const meta = data?.meta || {};
+  const nObs = meta.n_obs;
+  const horizon = meta.horizon;
+  const dsMin = meta.ds_min;
+  const dsMax = meta.ds_max;
+  const fMin = meta.forecast_ds_min;
+  const fMax = meta.forecast_ds_max;
+
+  const bits = [];
+  if (nObs != null) {
+    bits.push(`obs: ${nObs}`);
+  }
+  if (horizon != null) {
+    bits.push(`horizon: ${horizon}`);
+  }
+  if (dsMin && dsMax) {
+    bits.push(`train: ${dsMin} → ${dsMax}`);
+  }
+  if (fMin && fMax) {
+    bits.push(`forecast: ${fMin} → ${fMax}`);
+  }
+  if (currentDatasetLabel) {
+    bits.push(`dataset: ${currentDatasetLabel}`);
+  }
+
+  if (!bits.length) return;
+
+  bits.forEach((text) => {
+    const span = document.createElement("span");
+    span.innerHTML = `<strong>•</strong> ${text}`;
+    resultsMetaEl.appendChild(span);
+  });
+};
+
+const renderChart = (data) => {
+  if (!chartCanvas || typeof Chart === "undefined") return;
+
+  const ctx = chartCanvas.getContext("2d");
+  const train = data?.train || [];
+  const forecast = data?.forecast || [];
+
+  const labels = [...train.map((d) => d.ds), ...forecast.map((d) => d.ds)];
+  if (!labels.length) {
+    if (forecastChart) {
+      forecastChart.destroy();
+      forecastChart = null;
+    }
+    return;
+  }
+
+  const actual = [
+    ...train.map((d) => (d.y != null ? d.y : null)),
+    ...forecast.map(() => null),
+  ];
+  const yhat = [
+    ...train.map((d) => (d.yhat != null ? d.yhat : null)),
+    ...forecast.map((d) => (d.yhat != null ? d.yhat : null)),
+  ];
+
+  const dataConfig = {
+    labels,
+    datasets: [
+      {
+        label: "Actual",
+        data: actual,
+        borderColor: "#4b5563",
+        backgroundColor: "rgba(75, 85, 99, 0.15)",
+        tension: 0.15,
+        pointRadius: 0,
+        spanGaps: true,
+      },
+      {
+        label: "Forecast",
+        data: yhat,
+        borderColor: "#0070f3",
+        backgroundColor: "rgba(0, 112, 243, 0.12)",
+        tension: 0.15,
+        pointRadius: 0,
+        spanGaps: true,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      x: {
+        display: true,
+        title: {
+          display: true,
+          text: "Time",
+        },
+      },
+      y: {
+        display: true,
+        title: {
+          display: true,
+          text: "Value",
+        },
+      },
+    },
+    plugins: {
+      legend: {
+        display: true,
+      },
+      tooltip: {
+        mode: "index",
+        intersect: false,
+      },
+    },
+  };
+
+  if (!forecastChart) {
+    forecastChart = new Chart(ctx, {
+      type: "line",
+      data: dataConfig,
+      options,
+    });
+  } else {
+    forecastChart.data = dataConfig;
+    forecastChart.options = options;
+    forecastChart.update();
+  }
+};
+
+const buildForecastTable = (data) => {
+  const forecast = data?.forecast || [];
+  if (!forecast.length) {
+    return "No forecast data. Run a forecast to populate this table.";
+  }
+
+  const columns = ["ds", "y", "yhat", "yhat_lower", "yhat_upper"];
+  const header = columns.join("\t");
+
+  const rows = forecast.map((row) =>
+    columns
+      .map((col) => {
+        const v = row[col];
+        if (v == null) return "";
+        if (typeof v === "number") return String(v);
+        return String(v);
+      })
+      .join("\t"),
+  );
+
+  return [header, ...rows].join("\n");
+};
+
+const renderForecastTable = (data) => {
+  if (!forecastTableEl) return;
+  const text = buildForecastTable(data);
+  forecastTableEl.value = text;
+  if (copyForecastBtn) {
+    copyForecastBtn.disabled = !data?.forecast || !data.forecast.length;
+  }
+};
+
+const renderDataSummary = (summary) => {
+  if (!dataSummaryEl) return;
+  if (!currentDatasetPath) {
+    dataSummaryEl.textContent = "(load a dataset to see details)";
+    return;
+  }
+
+  const lines = [];
+  lines.push(`Dataset: ${currentDatasetLabel || currentDatasetPath}`);
+  if (summary) {
+    lines.push(`Rows: ${summary.n_rows}, columns: ${summary.n_cols}`);
+    if (Array.isArray(summary.columns)) {
+      lines.push(`Columns: ${summary.columns.join(", ")}`);
+    }
+    if (summary.has_ds) {
+      lines.push(`Date range: ${summary.ds_min} → ${summary.ds_max}`);
+    } else {
+      lines.push("No 'ds' column detected.");
+    }
+  }
+
+  dataSummaryEl.textContent = lines.join("\n");
+};
+
+const updateDataSummary = async () => {
+  if (!pyodideInstance || !currentDatasetPath) {
+    renderDataSummary(null);
+    return;
+  }
+
+  try {
+    pyodideInstance.globals.set("dataset_path", currentDatasetPath);
+    const proxy = await pyodideInstance.runPythonAsync(`
+import pandas as pd
+
+df = pd.read_csv(dataset_path)
+out = {
+    "n_rows": int(df.shape[0]),
+    "n_cols": int(df.shape[1]),
+    "columns": [str(c) for c in df.columns],
+}
+if "ds" in df.columns:
+    df["ds"] = pd.to_datetime(df["ds"], errors="coerce")
+    # Only consider rows with a valid ds (and y when present)
+    subset_cols = ["ds"]
+    if "y" in df.columns:
+        subset_cols.append("y")
+    df = df.dropna(subset=subset_cols)
+    out["n_rows"] = int(df.shape[0])
+    out["has_ds"] = df.shape[0] > 0
+    if df.shape[0] > 0:
+        out["ds_min"] = df["ds"].min().strftime("%Y-%m-%d")
+        out["ds_max"] = df["ds"].max().strftime("%Y-%m-%d")
+    else:
+        out["ds_min"] = None
+        out["ds_max"] = None
+else:
+    out["has_ds"] = False
+out
+`);
+    const summary = proxy.toJs({ dict: true });
+    proxy.destroy?.();
+    renderDataSummary(summary);
+  } catch (err) {
+    console.error(err);
+    setError(
+      "Failed to summarize dataset. Ensure it is a valid CSV with 'ds' and 'y' columns.",
+    );
+    appendLog(err?.stack ?? String(err));
+  }
 };
 
 const boot = async () => {
+  if (!bootBtn) return;
   bootBtn.disabled = true;
+  setError("");
   try {
     setStatus("Loading Pyodide runtime...");
     const pyodide = await loadPyodide({ indexURL: PYODIDE_INDEX_URL });
+    pyodideInstance = pyodide;
 
     setStatus("Loading base packages...");
     await pyodide.loadPackage([
@@ -135,8 +388,12 @@ const boot = async () => {
     pyodide.runPython(`import sys; sys.path.insert(0, "/py")`);
 
     await smokeTest(pyodide);
-    await runDemoForecast(pyodide);
-    setStatus("Ready. Demo forecast computed.");
+    appendLog("Pyodide and ForecastXGBOnly loaded.");
+
+    if (fileInputEl) fileInputEl.disabled = false;
+    if (demoBtnEl) demoBtnEl.disabled = false;
+
+    setStatus("Runtime ready. Load a dataset to begin.");
   } catch (err) {
     console.error(err);
     setStatus("Error while loading");
@@ -145,8 +402,232 @@ const boot = async () => {
   }
 };
 
+const getHorizon = () => {
+  if (!horizonInputEl) return 12;
+  const n = parseInt(horizonInputEl.value, 10);
+  if (!Number.isFinite(n) || n <= 0) return 12;
+  return n;
+};
+
+const setCurrentDataset = async (path, label) => {
+  currentDatasetPath = path;
+  currentDatasetLabel = label;
+  appendLog(`Dataset selected: ${label || path}`);
+  await updateDataSummary();
+  if (runForecastBtn) runForecastBtn.disabled = false;
+};
+
+const handleUserFileChange = async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (!pyodideInstance) {
+    setError("Load the forecasting engine before uploading data.");
+    return;
+  }
+
+  try {
+    setError("");
+    setStatus("Loading user CSV...");
+    const text = await file.text();
+    const destPath = "/data/user.csv";
+    ensureDir(pyodideInstance.FS, destPath);
+    pyodideInstance.FS.writeFile(destPath, text);
+    appendLog(`User CSV loaded (${file.name}, ${text.length} bytes).`);
+    await setCurrentDataset(destPath, file.name);
+    setStatus("User dataset ready. Configure horizon and run forecast.");
+  } catch (err) {
+    console.error(err);
+    setStatus("Failed to load user dataset.");
+    setError("Could not load the uploaded CSV. See log for details.");
+    appendLog(err?.stack ?? String(err));
+  }
+};
+
+const handleDemoClick = async () => {
+  if (!pyodideInstance) {
+    setError("Load the forecasting engine first.");
+    return;
+  }
+
+  try {
+    setError("");
+    setStatus("Fetching demo dataset...");
+    const destPath = "/data/air_passengers.csv";
+    await writeTextFile(pyodideInstance, DATASET_URL, destPath);
+    appendLog("Demo air passengers dataset downloaded.");
+    await setCurrentDataset(destPath, "Air passengers demo");
+    setStatus("Demo dataset ready. Configure horizon and run forecast.");
+  } catch (err) {
+    console.error(err);
+    setStatus("Failed to load demo dataset.");
+    setError("Could not fetch the demo dataset. See log for details.");
+    appendLog(err?.stack ?? String(err));
+  }
+};
+
+const handleRunForecast = async () => {
+  if (!pyodideInstance) {
+    setError("Load the forecasting engine first.");
+    return;
+  }
+  if (!currentDatasetPath) {
+    setError("Load a dataset (user CSV or demo) before running the forecast.");
+    return;
+  }
+
+  const horizon = getHorizon();
+  try {
+    setError("");
+    setStatus("Running forecast...");
+    appendLog(
+      `Running forecast on ${
+        currentDatasetLabel || currentDatasetPath
+      } (horizon=${horizon}).`,
+    );
+
+    pyodideInstance.globals.set("dataset_path", currentDatasetPath);
+    pyodideInstance.globals.set("forecast_horizon", horizon);
+
+    const proxy = await pyodideInstance.runPythonAsync(`
+import pandas as pd
+import numpy as np
+from forecasting_xgb_only import ForecastXGBOnly
+
+df = pd.read_csv(dataset_path)
+df = df.copy()
+if "ds" not in df.columns:
+    raise ValueError("CSV must contain a 'ds' column.")
+if "y" not in df.columns:
+    raise ValueError("CSV must contain a 'y' column.")
+
+df["ds"] = pd.to_datetime(df["ds"], errors="coerce")
+df = df.dropna(subset=["ds", "y"])
+if df.shape[0] == 0:
+    raise ValueError(
+        "No rows remain after dropping rows with missing 'ds' or 'y' values."
+    )
+
+m = ForecastXGBOnly(nrounds=50)
+m.fit(df, df["y"])
+
+train_pred = m.predict(df)
+
+if "var_est" in train_pred.columns:
+    z = 1.96
+    std = np.sqrt(train_pred["var_est"].to_numpy())
+    train_pred["yhat_lower"] = train_pred["yhat"] - z * std
+    train_pred["yhat_upper"] = train_pred["yhat"] + z * std
+
+if df["ds"].shape[0] >= 2:
+    diffs = df["ds"].sort_values().diff().dropna()
+    if not diffs.empty:
+        step = diffs.mode().iloc[0]
+    else:
+        step = pd.Timedelta(days=1)
+else:
+    step = pd.Timedelta(days=1)
+
+last_ds = df["ds"].max()
+future_ds = [last_ds + step * (i + 1) for i in range(int(forecast_horizon))]
+future = pd.DataFrame({"ds": future_ds})
+
+forecast = m.predict(future)
+if "var_est" in forecast.columns:
+    z = 1.96
+    std_f = np.sqrt(forecast["var_est"].to_numpy())
+    forecast["yhat_lower"] = forecast["yhat"] - z * std_f
+    forecast["yhat_upper"] = forecast["yhat"] + z * std_f
+
+forecast_ds_min = forecast["ds"].min().strftime("%Y-%m-%d")
+forecast_ds_max = forecast["ds"].max().strftime("%Y-%m-%d")
+
+meta = {
+    "horizon": int(forecast_horizon),
+    "n_obs": int(df.shape[0]),
+    "ds_min": df["ds"].min().strftime("%Y-%m-%d"),
+    "ds_max": df["ds"].max().strftime("%Y-%m-%d"),
+    "forecast_ds_min": forecast_ds_min,
+    "forecast_ds_max": forecast_ds_max,
+}
+
+out = {
+    "meta": meta,
+    "train": train_pred.assign(
+        ds=lambda d: d["ds"].dt.strftime("%Y-%m-%d")
+    ).to_dict("records"),
+    "forecast": forecast.assign(
+        ds=lambda d: d["ds"].dt.strftime("%Y-%m-%d")
+    ).to_dict("records"),
+}
+out
+`);
+    const result = proxy.toJs({ dict: true });
+    proxy.destroy?.();
+
+    lastResult = result;
+    renderMeta(result);
+    renderChart(result);
+    renderResultsText(result);
+    renderForecastTable(result);
+    setStatus("Forecast complete.");
+  } catch (err) {
+    console.error(err);
+    setStatus("Forecast failed.");
+    setError("Forecast failed. Check that your CSV has 'ds' and 'y' columns.");
+    appendLog(err?.stack ?? String(err));
+  }
+};
+
 if (bootBtn) {
   bootBtn.addEventListener("click", () => {
     boot();
+  });
+}
+
+if (fileInputEl) {
+  fileInputEl.addEventListener("change", (event) => {
+    handleUserFileChange(event);
+  });
+}
+
+if (demoBtnEl) {
+  demoBtnEl.addEventListener("click", () => {
+    handleDemoClick();
+  });
+}
+
+if (runForecastBtn) {
+  runForecastBtn.addEventListener("click", () => {
+    handleRunForecast();
+  });
+}
+
+const handleCopyForecast = async () => {
+  if (!forecastTableEl) return;
+  const text = forecastTableEl.value || "";
+  if (!text.trim()) {
+    setStatus("No forecast data to copy.");
+    return;
+  }
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      forecastTableEl.focus();
+      forecastTableEl.select();
+      document.execCommand("copy");
+    }
+    setStatus("Forecast table copied to clipboard.");
+  } catch (err) {
+    console.error(err);
+    setStatus("Failed to copy forecast table. Select and copy manually.");
+    appendLog(err?.stack ?? String(err));
+  }
+};
+
+if (copyForecastBtn) {
+  copyForecastBtn.addEventListener("click", () => {
+    handleCopyForecast();
   });
 }
