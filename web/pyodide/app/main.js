@@ -332,6 +332,56 @@ const renderDataSummary = (summary) => {
   dataSummaryEl.textContent = lines.join("\n");
 };
 
+const previewDatasetSeries = async () => {
+  if (!pyodideInstance || !currentDatasetPath) return;
+
+  try {
+    pyodideInstance.globals.set("dataset_path", currentDatasetPath);
+    const proxy = await pyodideInstance.runPythonAsync(`
+import pandas as pd
+
+df = pd.read_csv(dataset_path)
+df = df.copy()
+if "ds" not in df.columns or "y" not in df.columns:
+    raise ValueError("CSV must contain 'ds' and 'y' columns.")
+
+df["ds"] = pd.to_datetime(df["ds"], errors="coerce")
+df = df.dropna(subset=["ds", "y"])
+if df.shape[0] == 0:
+    raise ValueError(
+        "No rows remain after dropping rows with missing 'ds' or 'y' values."
+    )
+
+meta = {
+    "n_obs": int(df.shape[0]),
+    "ds_min": df["ds"].min().strftime("%Y-%m-%d %H:%M:%S"),
+    "ds_max": df["ds"].max().strftime("%Y-%m-%d %H:%M:%S"),
+}
+
+out = {
+    "meta": meta,
+    "train": df[["ds", "y"]].assign(
+        ds=lambda d: d["ds"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    ).to_dict("records"),
+    "forecast": [],
+}
+out
+`);
+    const result = proxy.toJs({ dict: true });
+    proxy.destroy?.();
+
+    lastResult = result;
+    renderMeta(result);
+    renderChart(result);
+  } catch (err) {
+    console.error(err);
+    appendLog(err?.stack ?? String(err));
+    setError(
+      "Failed to plot dataset. Ensure it has 'ds' and 'y' columns with valid values.",
+    );
+  }
+};
+
 const updateDataSummary = async () => {
   if (!pyodideInstance || !currentDatasetPath) {
     renderDataSummary(null);
@@ -359,8 +409,10 @@ if "ds" in df.columns:
     out["n_rows"] = int(df.shape[0])
     out["has_ds"] = df.shape[0] > 0
     if df.shape[0] > 0:
-        out["ds_min"] = df["ds"].min().strftime("%Y-%m-%d")
-        out["ds_max"] = df["ds"].max().strftime("%Y-%m-%d")
+        has_time = (df["ds"].dt.normalize() != df["ds"]).any()
+        fmt = "%Y-%m-%d %H:%M:%S" if has_time else "%Y-%m-%d"
+        out["ds_min"] = df["ds"].min().strftime(fmt)
+        out["ds_max"] = df["ds"].max().strftime(fmt)
     else:
         out["ds_min"] = None
         out["ds_max"] = None
@@ -433,6 +485,7 @@ const setCurrentDataset = async (path, label) => {
   currentDatasetLabel = label;
   appendLog(`Dataset selected: ${label || path}`);
   await updateDataSummary();
+  await previewDatasetSeries();
   if (runForecastBtn) runForecastBtn.disabled = false;
 };
 
@@ -560,22 +613,26 @@ if "var_est" in forecast.columns:
 forecast_ds_min = forecast["ds"].min().strftime("%Y-%m-%d")
 forecast_ds_max = forecast["ds"].max().strftime("%Y-%m-%d")
 
+# Decide whether to include time-of-day in outputs.
+has_time = (df["ds"].dt.normalize() != df["ds"]).any()
+fmt = "%Y-%m-%d %H:%M:%S" if has_time else "%Y-%m-%d"
+
 meta = {
     "horizon": int(forecast_horizon),
     "n_obs": int(df.shape[0]),
-    "ds_min": df["ds"].min().strftime("%Y-%m-%d"),
-    "ds_max": df["ds"].max().strftime("%Y-%m-%d"),
-    "forecast_ds_min": forecast_ds_min,
-    "forecast_ds_max": forecast_ds_max,
+    "ds_min": df["ds"].min().strftime(fmt),
+    "ds_max": df["ds"].max().strftime(fmt),
+    "forecast_ds_min": forecast["ds"].min().strftime(fmt),
+    "forecast_ds_max": forecast["ds"].max().strftime(fmt),
 }
 
 out = {
     "meta": meta,
     "train": train_pred.assign(
-        ds=lambda d: d["ds"].dt.strftime("%Y-%m-%d")
+        ds=lambda d: d["ds"].dt.strftime(fmt)
     ).to_dict("records"),
     "forecast": forecast.assign(
-        ds=lambda d: d["ds"].dt.strftime("%Y-%m-%d")
+        ds=lambda d: d["ds"].dt.strftime(fmt)
     ).to_dict("records"),
 }
 out

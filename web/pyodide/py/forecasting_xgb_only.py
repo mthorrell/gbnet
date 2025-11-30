@@ -375,26 +375,30 @@ def run_forecast_from_df(df: pd.DataFrame, horizon: int = 12):
         forecast["yhat_lower"] = forecast["yhat"] - z * std_f
         forecast["yhat_upper"] = forecast["yhat"] + z * std_f
 
-    forecast_ds_min = forecast["ds"].min().strftime("%Y-%m-%d")
-    forecast_ds_max = forecast["ds"].max().strftime("%Y-%m-%d")
+    # Decide whether to include time-of-day in string outputs.
+    has_time = (df["ds"].dt.normalize() != df["ds"]).any()
+    fmt = "%Y-%m-%d %H:%M:%S" if has_time else "%Y-%m-%d"
+
+    forecast_ds_min = forecast["ds"].min().strftime(fmt)
+    forecast_ds_max = forecast["ds"].max().strftime(fmt)
 
     meta = {
         "horizon": int(horizon),
         "n_obs": int(df.shape[0]),
-        "ds_min": df["ds"].min().strftime("%Y-%m-%d"),
-        "ds_max": df["ds"].max().strftime("%Y-%m-%d"),
+        "ds_min": df["ds"].min().strftime(fmt),
+        "ds_max": df["ds"].max().strftime(fmt),
         "forecast_ds_min": forecast_ds_min,
         "forecast_ds_max": forecast_ds_max,
     }
 
     out = {
         "meta": meta,
-        "train": train_pred.assign(
-            ds=lambda d: d["ds"].dt.strftime("%Y-%m-%d")
-        ).to_dict("records"),
-        "forecast": forecast.assign(
-            ds=lambda d: d["ds"].dt.strftime("%Y-%m-%d")
-        ).to_dict("records"),
+        "train": train_pred.assign(ds=lambda d: d["ds"].dt.strftime(fmt)).to_dict(
+            "records"
+        ),
+        "forecast": forecast.assign(ds=lambda d: d["ds"].dt.strftime(fmt)).to_dict(
+            "records"
+        ),
     }
     return out
 
