@@ -7,7 +7,7 @@ from scipy.optimize import root_scalar
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.utils.validation import check_is_fitted
 
-from gbnet.gblinear import GBLinear
+from gbnet.gblinear import GBLinear, ridge_regression
 
 
 def pd_datetime_to_seconds(x: pd.Series):
@@ -90,12 +90,14 @@ class Forecast(BaseEstimator, RegressorMixin):
         linear_params={},
         changepoint_params={},
         estimate_uncertainty=True,
+        trend_lambda=0.0,
     ):
         self.nrounds = nrounds
         self.model_ = None
         self.losses_ = []
         self.module_type = module_type
         self.trend_type = "GBLinear"
+        self.trend_lambda = trend_lambda
 
         self.params = {"eta": 0.17, "max_depth": 3, "lambda": 1, "alpha": 8}
         self.params.update(params)
@@ -126,6 +128,7 @@ class Forecast(BaseEstimator, RegressorMixin):
             trend_type=self.trend_type,
             linear_params=self.linear_params,
             changepoint_params=self.changepoint_params,
+            trend_lambda=self.trend_lambda,
         )
         self.model_.train()
         optimizer = torch.optim.Adam(self.model_.parameters(), lr=0.01)
@@ -246,12 +249,14 @@ class ForecastModule(torch.nn.Module):
         trend_type="GBLinear",
         linear_params={},
         changepoint_params={},
+        trend_lambda=0.0,
     ):
         super(ForecastModule, self).__init__()
         assert trend_type in {"PyTorch", "GBLinear"}
 
         self.initialized = False
         self.trend_type = trend_type
+        self.trend_lambda = trend_lambda
 
         if trend_type == "PyTorch":
             self.trend = torch.nn.Linear(1, 1)
@@ -308,11 +313,18 @@ class ForecastModule(torch.nn.Module):
         )
 
         X["intercept"] = 1
-        ests = lstsq(X[["intercept", "numeric_dt"]], X[["y"]])[0]
+        # ests = lstsq(X[["intercept", "numeric_dt"]], X[["y"]])[0]
+
+        # with torch.no_grad():
+        #     self.trend.linear.weight.copy_(torch.Tensor(ests[1:, :]))
+        #     self.trend.linear.bias.copy_(torch.Tensor(ests[0]))
+        ests = ridge_regression(
+            X[["intercept", "numeric_dt"]], X[["y"]], self.trend_lambda
+        )
 
         with torch.no_grad():
-            self.trend.linear.weight.copy_(torch.Tensor(ests[1:, :]))
-            self.trend.linear.bias.copy_(torch.Tensor(ests[0]))
+            self.trend.linear.weight.copy_(torch.Tensor(ests[1:, :].T))
+            self.trend.linear.bias.copy_(torch.Tensor(ests[0:1, :].flatten()))
 
         self.initialized = True
 
