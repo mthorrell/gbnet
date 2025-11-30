@@ -8,7 +8,6 @@ const DATASET_URL =
 const statusEl = document.getElementById("status");
 const logEl = document.getElementById("log");
 const bootBtn = document.getElementById("boot");
-const resultsEl = document.getElementById("results");
 const resultsMetaEl = document.getElementById("results-meta");
 const forecastTableEl = document.getElementById("forecast-table");
 const copyForecastBtn = document.getElementById("copy-forecast-btn");
@@ -78,57 +77,6 @@ const smokeTest = async (pyodide) => {
 from forecasting_xgb_only import ForecastXGBOnly
 print("ForecastXGBOnly import OK:", ForecastXGBOnly)
 `);
-};
-
-const renderResultsText = (data) => {
-  if (!resultsEl) return;
-  if (!data) {
-    resultsEl.textContent = "(no results)";
-    return;
-  }
-
-  const meta = data.meta || {};
-  const train = data.train || [];
-  const forecast = data.forecast || [];
-
-  const horizon = meta.horizon ?? "(unknown)";
-  const nObs = meta.n_obs ?? "(unknown)";
-  const dsMin = meta.ds_min;
-  const dsMax = meta.ds_max;
-  const fMin = meta.forecast_ds_min;
-  const fMax = meta.forecast_ds_max;
-
-  const trainTail = train.slice(-5);
-  const forecastHead = forecast.slice(0, 5);
-
-  const trainRows = trainTail
-    .map((row) => {
-      const y = row.y != null ? row.y : "?";
-      const yhat = row.yhat != null ? Number(row.yhat).toFixed(2) : "?";
-      return `${row.ds}: y=${y}, yhat=${yhat}`;
-    })
-    .join("\n");
-
-  const forecastRows = forecastHead
-    .map((row) => {
-      const yhat = row.yhat != null ? Number(row.yhat).toFixed(2) : "?";
-      return `${row.ds}: yhat=${yhat}`;
-    })
-    .join("\n");
-
-  const lines = [
-    `Meta: n_obs=${nObs}, horizon=${horizon}`,
-    dsMin && dsMax ? `Training range: ${dsMin} → ${dsMax}` : "",
-    fMin && fMax ? `Forecast range: ${fMin} → ${fMax}` : "",
-    "",
-    "Recent fit (tail of training):",
-    trainRows || "(none)",
-    "",
-    "Forecast (first steps):",
-    forecastRows || "(none)",
-  ].filter(Boolean);
-
-  resultsEl.textContent = lines.join("\n");
 };
 
 const renderMeta = (data) => {
@@ -270,12 +218,14 @@ const renderChart = (data) => {
   }
 
   // Configure the default x-axis window.
-  // "forecast" mode: forecast span occupies roughly the last 50% of the plot.
+  // "forecast" mode: forecast span occupies roughly the last 25% of the plot.
   // "all" mode: show full history.
   let xMin = undefined;
   let xMax = undefined;
   if (chartViewMode === "forecast" && nForecast > 0 && total > 0) {
-    const visibleSpan = Math.min(total, Math.max(nForecast * 2, 1));
+    // Choose a window where the forecast takes ~25% of the width:
+    // visibleSpan ≈ 4 * nForecast, anchored at the end.
+    const visibleSpan = Math.min(total, Math.max(nForecast * 4, 1));
     xMax = total - 1;
     xMin = Math.max(0, xMax - visibleSpan + 1);
   }
@@ -283,6 +233,7 @@ const renderChart = (data) => {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
+    animation: false,
     scales: {
       x: {
         display: true,
@@ -635,7 +586,6 @@ out
     lastResult = result;
     renderMeta(result);
     renderChart(result);
-    renderResultsText(result);
     renderForecastTable(result);
     setStatus("Forecast complete.");
   } catch (err) {
