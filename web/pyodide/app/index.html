@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>gbnet Forecaster (Pyodide)</title>
+  <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><rect width="80" height="80" rx="12" ry="12" fill="%2300467a"/><text x="12" y="36" font-family="Arial" font-size="28" font-weight="bold" fill="white">GB</text><text x="12" y="64" font-family="Arial" font-size="28" font-weight="bold" fill="white">Net</text></svg>'>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card-bg: #ffffff;
+      --border-subtle: #e0e4f0;
+      --border-strong: #c2c8dd;
+      --accent: #00467a;
+      --accent-soft: rgba(0, 70, 122, 0.06);
+      --accent-strong: #0070f3;
+      --text-main: #111827;
+      --text-muted: #6b7280;
+      --danger: #b91c1c;
+      --shadow-soft: 0 10px 25px rgba(15, 23, 42, 0.07);
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --space-sm: 0.5rem;
+      --space-md: 1rem;
+      --space-lg: 1.5rem;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: var(--space-lg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+      background: radial-gradient(circle at top left, #f0f4ff 0, #f5f7fb 40%, #f3f4f6 100%);
+      color: var(--text-main);
+    }
+
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 var(--space-sm);
+      font-size: 1.8rem;
+      letter-spacing: -0.02em;
+      color: var(--accent);
+    }
+
+    header p {
+      margin: 0 0 var(--space-lg);
+      color: var(--text-muted);
+      max-width: 52rem;
+    }
+
+    code {
+      background: #eef1f8;
+      padding: 0.1rem 0.3rem;
+      border-radius: 4px;
+      font-size: 0.95em;
+    }
+
+    .app-shell {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(245, 247, 252, 0.98));
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow-soft);
+      padding: var(--space-lg);
+    }
+
+    .app-grid {
+      display: grid;
+      grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+      gap: var(--space-lg);
+      align-items: flex-start;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        padding: var(--space-md);
+      }
+
+      .app-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .panel {
+      background: var(--card-bg);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-subtle);
+      padding: var(--space-md);
+    }
+
+    .panel + .panel {
+      margin-top: var(--space-md);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: var(--space-md);
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .panel-subtitle {
+      margin: 0;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    label {
+      font-size: 0.9rem;
+      font-weight: 500;
+      display: block;
+      margin-bottom: 0.15rem;
+    }
+
+    .field {
+      margin-bottom: 0.9rem;
+    }
+
+    .field-inline {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .field-help {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.15rem;
+    }
+
+    input[type="file"],
+    input[type="number"] {
+      font: inherit;
+    }
+
+    input[type="number"] {
+      width: 6rem;
+      padding: 0.25rem 0.4rem;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+      background: #f9fafb;
+    }
+
+    button {
+      font: inherit;
+      border-radius: 999px;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #ffffff;
+      padding: 0.4rem 0.9rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: background 0.12s ease, box-shadow 0.12s ease, transform 0.05s ease;
+      box-shadow: 0 3px 7px rgba(15, 23, 42, 0.25);
+    }
+
+    button.secondary {
+      background: #ffffff;
+      color: var(--accent);
+      border-color: var(--border-strong);
+      box-shadow: none;
+    }
+
+    button:hover:enabled {
+      background: var(--accent-strong);
+      transform: translateY(-0.5px);
+      box-shadow: 0 5px 12px rgba(15, 23, 42, 0.3);
+    }
+
+    button.secondary:hover:enabled {
+      background: var(--accent-soft);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: default;
+      box-shadow: none;
+    }
+
+    #status {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    #errors {
+      margin: 0.4rem 0 0.6rem;
+      padding: 0.4rem 0.6rem;
+      border-radius: 6px;
+      border: 1px solid rgba(185, 28, 28, 0.35);
+      background: rgba(254, 242, 242, 0.9);
+      color: var(--danger);
+      font-size: 0.8rem;
+      display: none;
+      white-space: pre-wrap;
+    }
+
+    #data-summary {
+      white-space: pre-wrap;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      padding: 0.5rem 0.55rem;
+      border-radius: 6px;
+      background: #f9fafb;
+      border: 1px dashed var(--border-subtle);
+      min-height: 2.5rem;
+    }
+
+    #log {
+      white-space: pre-wrap;
+      background: #0b1120;
+      color: #e5e7eb;
+      border-radius: 6px;
+      padding: 0.6rem 0.75rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.75rem;
+      max-height: 180px;
+      overflow-y: auto;
+      border: 1px solid #020617;
+    }
+
+    details.log-panel {
+      margin-top: 0.4rem;
+      font-size: 0.85rem;
+    }
+
+    details.log-panel summary {
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+
+    .chart-container {
+      position: relative;
+      height: 280px;
+      width: 100%;
+      margin-bottom: 0.6rem;
+      background: radial-gradient(circle at top, #f9fafb, #edf2ff);
+      border-radius: 8px;
+      border: 1px solid var(--border-subtle);
+      padding: 0.5rem;
+    }
+
+    #forecast-table {
+      width: 100%;
+      min-height: 140px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+      font-size: 0.8rem;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+      padding: 0.5rem 0.6rem;
+      background: #f9fafb;
+      resize: vertical;
+      box-sizing: border-box;
+      margin-top: 0.25rem;
+    }
+
+    .meta {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .meta span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 999px;
+      background: #f3f4ff;
+      border: 1px solid #e0e7ff;
+    }
+
+    .meta span strong {
+      font-weight: 600;
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>GBNet Time Series Forecaster</h1>
+      <p>
+        Load a dataset with <code>ds</code> (timestamp) and <code>y</code> (target), choose a forecast horizon, and run an XGBoost + Trend forecaster entirely in your browser.
+      </p>
+    </header>
+
+    <div class="app-shell">
+      <div class="app-grid">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">1. Runtime &amp; Data</h2>
+              <p class="panel-subtitle">Load the forecasting runtime and pick a dataset.</p>
+            </div>
+            <div id="status" aria-live="polite">Idle</div>
+          </div>
+
+          <div class="field field-inline">
+            <button id="boot">Load forecasting engine</button>
+          </div>
+
+          <div id="errors" role="alert"></div>
+
+          <div class="field">
+            <label for="file-input">Upload CSV dataset</label>
+            <input id="file-input" type="file" accept=".csv,text/csv" disabled>
+            <span class="field-help">
+              Expected columns: <code>ds</code> (datetime) and <code>y</code> (numeric).
+            </span>
+          </div>
+
+          <div class="field field-inline">
+            <button id="demo-data-btn" class="secondary" disabled>Use demo air passengers dataset</button>
+            <span class="field-help">Quick start with a built-in monthly airline passengers example.</span>
+          </div>
+
+          <div class="field">
+            <label>Data summary</label>
+            <div id="data-summary">(load a dataset to see details)</div>
+          </div>
+
+          <hr style="border: none; border-top: 1px solid var(--border-subtle); margin: 0.85rem 0;">
+
+          <div class="panel-header" style="margin-bottom: 0.6rem;">
+            <div>
+              <h2 class="panel-title">2. Forecast settings</h2>
+              <p class="panel-subtitle">Control the forecast horizon.</p>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="horizon-input">Forecast horizon (steps)</label>
+            <div class="field-inline">
+              <input id="horizon-input" type="number" min="1" max="120" value="12">
+              <span class="field-help">
+                One step matches the dataset's detected frequency (e.g. months for monthly data).
+              </span>
+            </div>
+          </div>
+
+          <div class="field">
+            <button id="run-forecast-btn" disabled>Run forecast</button>
+          </div>
+
+          <details class="log-panel">
+            <summary>Debug log</summary>
+            <div id="log"></div>
+          </details>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">3. Results</h2>
+              <p class="panel-subtitle">Visualize the input series and forecast.</p>
+            </div>
+          </div>
+
+          <div class="meta" id="results-meta"></div>
+
+          <div class="field field-inline" style="margin-bottom: 0.4rem;">
+            <span class="field-help">View window:</span>
+            <button id="view-all-btn" class="secondary">Full history</button>
+            <button id="view-forecast-btn" class="secondary">Focus forecast</button>
+          </div>
+
+          <div class="chart-container">
+            <canvas id="chart-forecast" aria-label="Forecast chart"></canvas>
+          </div>
+
+          <div class="field" style="margin-top: 0.9rem;">
+            <label for="forecast-table">Forecast table (copy / paste into Excel)</label>
+            <div class="field-inline" style="margin-bottom: 0.25rem;">
+              <button id="copy-forecast-btn" class="secondary" disabled>Copy forecast table</button>
+              <span class="field-help">
+                Tab-separated with one row per forecast step.
+              </span>
+            </div>
+            <textarea id="forecast-table" readonly>
+Run a forecast to populate this table. Then copy / paste into Excel.
+            </textarea>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
