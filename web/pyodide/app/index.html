@@ -137,6 +137,19 @@
       flex-wrap: wrap;
     }
 
+    .field-row-compact {
+      align-items: flex-end;
+      gap: 0.9rem;
+    }
+
+    .field-compact label {
+      margin-bottom: 0.25rem;
+    }
+
+    .field-compact input[type="number"] {
+      width: 5rem;
+    }
+
     .field-help {
       display: block;
       font-size: 0.8rem;
@@ -296,6 +309,60 @@
       font-weight: 600;
       color: var(--accent);
     }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+
+    .modal {
+      background: var(--card-bg);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow-soft);
+      padding: var(--space-lg);
+      max-width: 520px;
+      width: 100%;
+    }
+
+    .modal-title {
+      margin: 0 0 0.35rem;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .modal-subtitle {
+      margin: 0 0 0.75rem;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .modal-textarea {
+      width: 100%;
+      min-height: 140px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+      font-size: 0.8rem;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+      padding: 0.5rem 0.6rem;
+      background: #f9fafb;
+      resize: vertical;
+      box-sizing: border-box;
+      margin-bottom: 0.75rem;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
   </style>
 </head>
 <body>
@@ -318,28 +385,45 @@
             <div id="status" aria-live="polite">Idle</div>
           </div>
 
-          <div class="field field-inline">
-            <button id="boot">Load forecasting engine</button>
+          <div id="runtime-setup">
+            <div class="field field-inline">
+              <button id="boot">Load forecasting engine</button>
+            </div>
+
+            <div id="errors" role="alert"></div>
+
+            <div class="field">
+              <label for="file-input">Upload CSV dataset</label>
+              <input id="file-input" type="file" accept=".csv,text/csv" disabled>
+              <span class="field-help">
+                Expected columns: <code>ds</code> (datetime) and <code>y</code> (numeric).
+              </span>
+            </div>
+
+            <div class="field field-inline">
+              <button id="open-paste-modal-btn" class="secondary" disabled>Paste from Excel…</button>
+              <span class="field-help">
+                Open a modal to paste <code>ds</code> and <code>y</code> directly from Excel.
+              </span>
+            </div>
+
+            <div class="field field-inline">
+              <button id="demo-data-btn" class="secondary" disabled>Use demo air passengers dataset</button>
+              <span class="field-help">Quick start with a built-in monthly airline passengers example.</span>
+            </div>
+
+            <div class="field">
+              <label>Data summary</label>
+              <div id="data-summary">(load a dataset to see details)</div>
+            </div>
           </div>
 
-          <div id="errors" role="alert"></div>
-
-          <div class="field">
-            <label for="file-input">Upload CSV dataset</label>
-            <input id="file-input" type="file" accept=".csv,text/csv" disabled>
-            <span class="field-help">
-              Expected columns: <code>ds</code> (datetime) and <code>y</code> (numeric).
-            </span>
-          </div>
-
-          <div class="field field-inline">
-            <button id="demo-data-btn" class="secondary" disabled>Use demo air passengers dataset</button>
-            <span class="field-help">Quick start with a built-in monthly airline passengers example.</span>
-          </div>
-
-          <div class="field">
-            <label>Data summary</label>
-            <div id="data-summary">(load a dataset to see details)</div>
+          <div id="runtime-summary" class="field field-inline" style="display: none;">
+            <div>
+              <label>Runtime &amp; data</label>
+              <div id="runtime-summary-text" class="field-help"></div>
+            </div>
+            <button id="runtime-change-btn" class="secondary">Change…</button>
           </div>
 
           <hr style="border: none; border-top: 1px solid var(--border-subtle); margin: 0.85rem 0;">
@@ -347,18 +431,30 @@
           <div class="panel-header" style="margin-bottom: 0.6rem;">
             <div>
               <h2 class="panel-title">2. Forecast settings</h2>
-              <p class="panel-subtitle">Control the forecast horizon.</p>
+              <p class="panel-subtitle">Control the forecast horizon and training window.</p>
             </div>
           </div>
 
           <div class="field">
-            <label for="horizon-input">Forecast horizon (steps)</label>
-            <div class="field-inline">
-              <input id="horizon-input" type="number" min="1" max="120" value="12">
-              <span class="field-help">
-                One step matches the dataset's detected frequency (e.g. months for monthly data).
-              </span>
+            <div class="field-inline field-row-compact">
+              <div class="field-compact">
+                <label for="horizon-input">Horizon</label>
+                <input id="horizon-input" type="number" min="1" max="120" value="12">
+              </div>
+              <div class="field-compact">
+                <label for="train-fraction-input">Train Last %</label>
+                <input id="train-fraction-input" type="number" min="10" max="100" value="100">
+              </div>
+              <div class="field-compact">
+                <label for="boost-rounds-input">Boost Rounds</label>
+                <input id="boost-rounds-input" type="number" min="1" max="2000" value="50">
+              </div>
             </div>
+            <span class="field-help">
+              Horizon uses the detected frequency <br>
+              Train Last % trains on last X% of input data <br>
+              Boost Rounds indicates the number of boosting iterations
+            </span>
           </div>
 
           <div class="field">
@@ -374,7 +470,7 @@
         <section class="panel">
           <div class="panel-header">
             <div>
-              <h2 class="panel-title">3. Results</h2>
+              <h2 class="panel-title">3. GBNet Time Series Forecaster Results</h2>
               <p class="panel-subtitle">Visualize the input series and forecast.</p>
             </div>
           </div>
@@ -383,8 +479,10 @@
 
           <div class="field field-inline" style="margin-bottom: 0.4rem;">
             <span class="field-help">View window:</span>
-            <button id="view-all-btn" class="secondary">Full history</button>
-            <button id="view-forecast-btn" class="secondary">Focus forecast</button>
+            <button id="view-full-btn" class="secondary">Full history</button>
+            <button id="view-75-btn" class="secondary">Latest 75%</button>
+            <button id="view-50-btn" class="secondary">Latest 50%</button>
+            <button id="view-25-btn" class="secondary">Latest 25%</button>
           </div>
 
           <div class="chart-container">
@@ -410,5 +508,25 @@ Run a forecast to populate this table. Then copy / paste into Excel.
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script type="module" src="./main.js"></script>
+
+  <div id="paste-modal-backdrop" class="modal-backdrop" style="display: none;">
+    <div class="modal">
+      <h2 class="modal-title">Paste from Excel</h2>
+      <p class="modal-subtitle">
+        Copy cells from Excel <strong>without</strong> the header row. The first
+        column should be <code>ds</code> (date / datetime) and the second column
+        should be <code>y</code> (numeric), then paste below.
+      </p>
+      <textarea
+        id="paste-textarea"
+        class="modal-textarea"
+        placeholder="2020-01-01&#9;123.0&#10;2020-02-01&#9;456.0"
+      ></textarea>
+      <div class="modal-actions">
+        <button id="use-paste-btn">Use pasted data</button>
+        <button id="cancel-paste-btn" class="secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
