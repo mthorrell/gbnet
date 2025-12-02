@@ -11,8 +11,12 @@ const bootBtn = document.getElementById("boot");
 const resultsMetaEl = document.getElementById("results-meta");
 const forecastTableEl = document.getElementById("forecast-table");
 const copyForecastBtn = document.getElementById("copy-forecast-btn");
-const viewAllBtn = document.getElementById("view-all-btn");
-const viewForecastBtn = document.getElementById("view-forecast-btn");
+const viewFullBtn = document.getElementById("view-full-btn");
+const view75Btn = document.getElementById("view-75-btn");
+const view50Btn = document.getElementById("view-50-btn");
+const view25Btn = document.getElementById("view-25-btn");
+const trainFractionInputEl = document.getElementById("train-fraction-input");
+const boostRoundsInputEl = document.getElementById("boost-rounds-input");
 const fileInputEl = document.getElementById("file-input");
 const demoBtnEl = document.getElementById("demo-data-btn");
 const horizonInputEl = document.getElementById("horizon-input");
@@ -20,13 +24,23 @@ const runForecastBtn = document.getElementById("run-forecast-btn");
 const dataSummaryEl = document.getElementById("data-summary");
 const errorsEl = document.getElementById("errors");
 const chartCanvas = document.getElementById("chart-forecast");
+const openPasteModalBtn = document.getElementById("open-paste-modal-btn");
+const pasteModalBackdrop = document.getElementById("paste-modal-backdrop");
+const pasteTextareaEl = document.getElementById("paste-textarea");
+const usePasteBtn = document.getElementById("use-paste-btn");
+const cancelPasteBtn = document.getElementById("cancel-paste-btn");
+const runtimeSetupEl = document.getElementById("runtime-setup");
+const runtimeSummaryEl = document.getElementById("runtime-summary");
+const runtimeSummaryTextEl = document.getElementById("runtime-summary-text");
+const runtimeChangeBtn = document.getElementById("runtime-change-btn");
 
 let pyodideInstance = null;
 let currentDatasetPath = null;
 let currentDatasetLabel = null;
+let currentDatasetSource = null; // "file", "demo", "pasted"
 let forecastChart = null;
 let lastResult = null;
-let chartViewMode = "forecast"; // "forecast" (zoomed) or "all"
+let chartViewMode = "full"; // "full", "p75", "p50", "p25"
 
 const setStatus = (msg) => {
   if (statusEl) statusEl.textContent = msg;
@@ -48,6 +62,34 @@ const appendLog = (msg) => {
   const stamp = new Date().toISOString();
   logEl.textContent += `[${stamp}] ${msg}\n`;
   logEl.scrollTop = logEl.scrollHeight;
+};
+
+const isRuntimeReady = () => !!pyodideInstance;
+
+const getDatasetSourceLabel = () => {
+  if (currentDatasetSource === "demo") return "Demo dataset";
+  if (currentDatasetSource === "file") return "Uploaded file";
+  if (currentDatasetSource === "pasted") return "Pasted from Excel";
+  return "";
+};
+
+const updateRuntimeSummary = () => {
+  if (!runtimeSummaryEl || !runtimeSummaryTextEl) return;
+  if (!isRuntimeReady() || !currentDatasetPath) {
+    runtimeSummaryEl.style.display = "none";
+    if (runtimeSetupEl) runtimeSetupEl.style.display = "";
+    return;
+  }
+
+  const label = currentDatasetLabel || currentDatasetPath;
+  const sourceLabel = getDatasetSourceLabel();
+  const parts = [`Runtime: ready`, `Dataset: ${label}`];
+  if (sourceLabel) {
+    parts.push(sourceLabel);
+  }
+  runtimeSummaryTextEl.textContent = parts.join(" · ");
+  runtimeSummaryEl.style.display = "";
+  if (runtimeSetupEl) runtimeSetupEl.style.display = "none";
 };
 
 const ensureDir = (fs, path) => {
@@ -217,17 +259,26 @@ const renderChart = (data) => {
     });
   }
 
-  // Configure the default x-axis window.
-  // "forecast" mode: forecast span occupies roughly the last 25% of the plot.
-  // "all" mode: show full history.
+  // Configure the x-axis window based on the selected view mode.
   let xMin = undefined;
   let xMax = undefined;
-  if (chartViewMode === "forecast" && nForecast > 0 && total > 0) {
-    // Choose a window where the forecast takes ~25% of the width:
-    // visibleSpan ≈ 4 * nForecast, anchored at the end.
-    const visibleSpan = Math.min(total, Math.max(nForecast * 4, 1));
+  if (total > 0) {
     xMax = total - 1;
-    xMin = Math.max(0, xMax - visibleSpan + 1);
+
+    if (chartViewMode === "full") {
+      xMin = 0;
+    } else {
+      const fractions = {
+        p75: 0.75,
+        p50: 0.5,
+        p25: 0.25,
+      };
+      const fraction = fractions[chartViewMode] ?? 1;
+      const baseLength = nTrain > 0 ? nTrain : total;
+      const visibleHistory = Math.max(1, Math.round(baseLength * fraction));
+      const historyStart = Math.max(0, baseLength - visibleHistory);
+      xMin = historyStart;
+    }
   }
 
   const options = {
@@ -317,6 +368,9 @@ const renderDataSummary = (summary) => {
 
   const lines = [];
   lines.push(`Dataset: ${currentDatasetLabel || currentDatasetPath}`);
+  if (currentDatasetSource) {
+    lines.push(`Source: ${currentDatasetSource}`);
+  }
   if (summary) {
     lines.push(`Rows: ${summary.n_rows}, columns: ${summary.n_cols}`);
     if (Array.isArray(summary.columns)) {
@@ -340,7 +394,7 @@ const previewDatasetSeries = async () => {
     const proxy = await pyodideInstance.runPythonAsync(`
 import pandas as pd
 
-df = pd.read_csv(dataset_path)
+df = pd.read_csv(dataset_path, sep=None, engine="python")
 df = df.copy()
 if "ds" not in df.columns or "y" not in df.columns:
     raise ValueError("CSV must contain 'ds' and 'y' columns.")
@@ -393,7 +447,7 @@ const updateDataSummary = async () => {
     const proxy = await pyodideInstance.runPythonAsync(`
 import pandas as pd
 
-df = pd.read_csv(dataset_path)
+df = pd.read_csv(dataset_path, sep=None, engine="python")
 out = {
     "n_rows": int(df.shape[0]),
     "n_cols": int(df.shape[1]),
@@ -463,6 +517,8 @@ const boot = async () => {
 
     if (fileInputEl) fileInputEl.disabled = false;
     if (demoBtnEl) demoBtnEl.disabled = false;
+    if (openPasteModalBtn) openPasteModalBtn.disabled = false;
+    updateRuntimeSummary();
 
     setStatus("Runtime ready. Load a dataset to begin.");
   } catch (err) {
@@ -480,13 +536,31 @@ const getHorizon = () => {
   return n;
 };
 
-const setCurrentDataset = async (path, label) => {
+const getTrainFraction = () => {
+  if (!trainFractionInputEl) return 1;
+  const v = parseFloat(trainFractionInputEl.value);
+  if (!Number.isFinite(v)) return 1;
+  const clampedPercent = Math.min(100, Math.max(10, v));
+  return clampedPercent / 100;
+};
+
+const getBoostRounds = () => {
+  if (!boostRoundsInputEl) return 50;
+  const n = parseInt(boostRoundsInputEl.value, 10);
+  if (!Number.isFinite(n)) return 50;
+  const clamped = Math.min(2000, Math.max(1, n));
+  return clamped;
+};
+
+const setCurrentDataset = async (path, label, source) => {
   currentDatasetPath = path;
   currentDatasetLabel = label;
+  currentDatasetSource = source || null;
   appendLog(`Dataset selected: ${label || path}`);
   await updateDataSummary();
   await previewDatasetSeries();
   if (runForecastBtn) runForecastBtn.disabled = false;
+  updateRuntimeSummary();
 };
 
 const handleUserFileChange = async (event) => {
@@ -505,7 +579,7 @@ const handleUserFileChange = async (event) => {
     ensureDir(pyodideInstance.FS, destPath);
     pyodideInstance.FS.writeFile(destPath, text);
     appendLog(`User CSV loaded (${file.name}, ${text.length} bytes).`);
-    await setCurrentDataset(destPath, file.name);
+    await setCurrentDataset(destPath, file.name, "file");
     setStatus("User dataset ready. Configure horizon and run forecast.");
   } catch (err) {
     console.error(err);
@@ -527,7 +601,7 @@ const handleDemoClick = async () => {
     const destPath = "/data/air_passengers.csv";
     await writeTextFile(pyodideInstance, DATASET_URL, destPath);
     appendLog("Demo air passengers dataset downloaded.");
-    await setCurrentDataset(destPath, "Air passengers demo");
+    await setCurrentDataset(destPath, "Air passengers demo", "demo");
     setStatus("Demo dataset ready. Configure horizon and run forecast.");
   } catch (err) {
     console.error(err);
@@ -548,24 +622,30 @@ const handleRunForecast = async () => {
   }
 
   const horizon = getHorizon();
+  const trainFraction = getTrainFraction();
+  const boostRounds = getBoostRounds();
   try {
     setError("");
     setStatus("Running forecast...");
     appendLog(
       `Running forecast on ${
         currentDatasetLabel || currentDatasetPath
-      } (horizon=${horizon}).`,
+      } (horizon=${horizon}, train_last=${Math.round(
+        trainFraction * 100,
+      )}%, rounds=${boostRounds}).`,
     );
 
     pyodideInstance.globals.set("dataset_path", currentDatasetPath);
     pyodideInstance.globals.set("forecast_horizon", horizon);
+    pyodideInstance.globals.set("train_fraction", trainFraction);
+    pyodideInstance.globals.set("boost_rounds", boostRounds);
 
     const proxy = await pyodideInstance.runPythonAsync(`
 import pandas as pd
 import numpy as np
 from forecasting_xgb_only import ForecastXGBOnly
 
-df = pd.read_csv(dataset_path)
+df = pd.read_csv(dataset_path, sep=None, engine="python")
 df = df.copy()
 if "ds" not in df.columns:
     raise ValueError("CSV must contain a 'ds' column.")
@@ -579,8 +659,32 @@ if df.shape[0] == 0:
         "No rows remain after dropping rows with missing 'ds' or 'y' values."
     )
 
-m = ForecastXGBOnly(nrounds=50)
-m.fit(df, df["y"])
+n_total = df.shape[0]
+if n_total < 5:
+    raise ValueError(
+        "Dataset too small after cleaning. Need at least 5 rows."
+    )
+
+try:
+    frac = float(train_fraction)
+except Exception:
+    frac = 1.0
+frac = max(0.1, min(1.0, frac))
+n_train = max(5, int(round(n_total * frac)))
+n_train = min(n_total, n_train)
+train_df = df.tail(n_train).copy()
+
+try:
+    nrounds = int(boost_rounds)
+except Exception:
+    nrounds = 50
+if nrounds < 1:
+    nrounds = 1
+if nrounds > 2000:
+    nrounds = 2000
+
+m = ForecastXGBOnly(nrounds=nrounds)
+m.fit(train_df, train_df["y"])
 
 train_pred = m.predict(df)
 
@@ -589,6 +693,14 @@ if "var_est" in train_pred.columns:
     std = np.sqrt(train_pred["var_est"].to_numpy())
     train_pred["yhat_lower"] = train_pred["yhat"] - z * std
     train_pred["yhat_upper"] = train_pred["yhat"] + z * std
+
+# Do not show model predictions before the training window.
+cutoff_ds = train_df["ds"].min()
+mask_pre_train = train_pred["ds"] < cutoff_ds
+if mask_pre_train.any():
+    for col in ["yhat", "trend", "season", "var_est", "yhat_lower", "yhat_upper"]:
+        if col in train_pred.columns:
+            train_pred.loc[mask_pre_train, col] = np.nan
 
 if df["ds"].shape[0] >= 2:
     diffs = df["ds"].sort_values().diff().dropna()
@@ -619,9 +731,9 @@ fmt = "%Y-%m-%d %H:%M:%S" if has_time else "%Y-%m-%d"
 
 meta = {
     "horizon": int(forecast_horizon),
-    "n_obs": int(df.shape[0]),
-    "ds_min": df["ds"].min().strftime(fmt),
-    "ds_max": df["ds"].max().strftime(fmt),
+    "n_obs": int(train_df.shape[0]),
+    "ds_min": train_df["ds"].min().strftime(fmt),
+    "ds_max": train_df["ds"].max().strftime(fmt),
     "forecast_ds_min": forecast["ds"].min().strftime(fmt),
     "forecast_ds_max": forecast["ds"].max().strftime(fmt),
 }
@@ -677,23 +789,99 @@ if (runForecastBtn) {
   });
 }
 
-if (viewAllBtn) {
-  viewAllBtn.addEventListener("click", () => {
-    chartViewMode = "all";
+if (viewFullBtn) {
+  viewFullBtn.addEventListener("click", () => {
+    chartViewMode = "full";
     if (lastResult) {
       renderChart(lastResult);
     }
   });
 }
 
-if (viewForecastBtn) {
-  viewForecastBtn.addEventListener("click", () => {
-    chartViewMode = "forecast";
+if (view75Btn) {
+  view75Btn.addEventListener("click", () => {
+    chartViewMode = "p75";
     if (lastResult) {
       renderChart(lastResult);
     }
   });
 }
+
+if (view50Btn) {
+  view50Btn.addEventListener("click", () => {
+    chartViewMode = "p50";
+    if (lastResult) {
+      renderChart(lastResult);
+    }
+  });
+}
+
+if (view25Btn) {
+  view25Btn.addEventListener("click", () => {
+    chartViewMode = "p25";
+    if (lastResult) {
+      renderChart(lastResult);
+    }
+  });
+}
+
+const openPasteModal = () => {
+  if (!pasteModalBackdrop) return;
+  setError("");
+  pasteModalBackdrop.style.display = "flex";
+  if (pasteTextareaEl) {
+    pasteTextareaEl.value = "";
+    pasteTextareaEl.focus();
+  }
+};
+
+const closePasteModal = () => {
+  if (!pasteModalBackdrop) return;
+  pasteModalBackdrop.style.display = "none";
+};
+
+const handleUsePastedData = async () => {
+  if (!pyodideInstance) {
+    setError("Load the forecasting engine before pasting data.");
+    return;
+  }
+  if (!pasteTextareaEl) return;
+
+  const text = pasteTextareaEl.value || "";
+  if (!text.trim()) {
+    setError("Pasted data is empty. Copy cells from Excel first.");
+    return;
+  }
+
+  try {
+    setError("");
+    setStatus("Loading pasted data...");
+    const raw = text.trim();
+    const firstLine = raw.split(/\r?\n/)[0] || "";
+    let delimiter = "\t";
+    if (firstLine.includes("\t")) {
+      delimiter = "\t";
+    } else if (firstLine.includes(",")) {
+      delimiter = ",";
+    } else if (firstLine.includes(";")) {
+      delimiter = ";";
+    }
+    const header = ["ds", "y"].join(delimiter);
+    const csvText = `${header}\n${raw}\n`;
+    const destPath = "/data/pasted.csv";
+    ensureDir(pyodideInstance.FS, destPath);
+    pyodideInstance.FS.writeFile(destPath, csvText);
+    appendLog(`Pasted data loaded (${csvText.length} bytes, delimiter="${delimiter}").`);
+    await setCurrentDataset(destPath, "Pasted from Excel", "pasted");
+    setStatus("Pasted dataset ready. Configure horizon and run forecast.");
+    closePasteModal();
+  } catch (err) {
+    console.error(err);
+    setStatus("Failed to load pasted dataset.");
+    setError("Could not load the pasted data. See log for details.");
+    appendLog(err?.stack ?? String(err));
+  }
+};
 
 const handleCopyForecast = async () => {
   if (!forecastTableEl) return;
@@ -722,5 +910,38 @@ const handleCopyForecast = async () => {
 if (copyForecastBtn) {
   copyForecastBtn.addEventListener("click", () => {
     handleCopyForecast();
+  });
+}
+
+if (openPasteModalBtn) {
+  openPasteModalBtn.addEventListener("click", () => {
+    openPasteModal();
+  });
+}
+
+if (usePasteBtn) {
+  usePasteBtn.addEventListener("click", () => {
+    handleUsePastedData();
+  });
+}
+
+if (cancelPasteBtn) {
+  cancelPasteBtn.addEventListener("click", () => {
+    closePasteModal();
+  });
+}
+
+if (pasteModalBackdrop) {
+  pasteModalBackdrop.addEventListener("click", (event) => {
+    if (event.target === pasteModalBackdrop) {
+      closePasteModal();
+    }
+  });
+}
+
+if (runtimeChangeBtn) {
+  runtimeChangeBtn.addEventListener("click", () => {
+    if (runtimeSetupEl) runtimeSetupEl.style.display = "";
+    if (runtimeSummaryEl) runtimeSummaryEl.style.display = "none";
   });
 }

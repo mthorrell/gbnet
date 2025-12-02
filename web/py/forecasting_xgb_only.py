@@ -322,7 +322,13 @@ def _mle_G(r, h, S2, bracket_pad=1.0):
     return sol.root, sol
 
 
-def run_forecast_from_df(df: pd.DataFrame, horizon: int = 12):
+def run_forecast_from_df(
+    df: pd.DataFrame,
+    horizon: int = 12,
+    train_fraction: float = 1.0,
+    min_train_points: int = 5,
+    nrounds: int = 50,
+):
     """
     Convenience helper for Pyodide: fit ForecastXGBOnly on a DataFrame and
     return JSON-serializable training + forecast outputs.
@@ -343,8 +349,35 @@ def run_forecast_from_df(df: pd.DataFrame, horizon: int = 12):
             "No rows remain after dropping rows with missing 'ds' or 'y' values."
         )
 
-    m = ForecastXGBOnly(nrounds=50)
-    m.fit(df, df["y"])
+    n_total = df.shape[0]
+    if n_total < min_train_points:
+        raise ValueError(
+            f"Dataset too small after cleaning. Need at least {min_train_points} rows."
+        )
+
+    # Clamp training fraction between 10% and 100%.
+    try:
+        frac = float(train_fraction)
+    except Exception:
+        frac = 1.0
+    frac = max(0.1, min(1.0, frac))
+
+    n_train = max(min_train_points, int(round(n_total * frac)))
+    n_train = min(n_total, n_train)
+    train_df = df.tail(n_train).copy()
+
+    # Clamp boosting rounds to a reasonable range.
+    try:
+        nrounds_int = int(nrounds)
+    except Exception:
+        nrounds_int = 50
+    if nrounds_int < 1:
+        nrounds_int = 1
+    if nrounds_int > 2000:
+        nrounds_int = 2000
+
+    m = ForecastXGBOnly(nrounds=nrounds_int)
+    m.fit(train_df, train_df["y"])
 
     train_pred = m.predict(df)
 
@@ -353,6 +386,21 @@ def run_forecast_from_df(df: pd.DataFrame, horizon: int = 12):
         z = 1.96
         train_pred["yhat_lower"] = train_pred["yhat"] - z * std
         train_pred["yhat_upper"] = train_pred["yhat"] + z * std
+
+    # Do not provide model predictions prior to the training window.
+    cutoff_ds = train_df["ds"].min()
+    mask_pre_train = train_pred["ds"] < cutoff_ds
+    if mask_pre_train.any():
+        for col in [
+            "yhat",
+            "trend",
+            "season",
+            "var_est",
+            "yhat_lower",
+            "yhat_upper",
+        ]:
+            if col in train_pred.columns:
+                train_pred.loc[mask_pre_train, col] = np.nan
 
     if df["ds"].shape[0] >= 2:
         diffs = df["ds"].sort_values().diff().dropna()
@@ -384,9 +432,9 @@ def run_forecast_from_df(df: pd.DataFrame, horizon: int = 12):
 
     meta = {
         "horizon": int(horizon),
-        "n_obs": int(df.shape[0]),
-        "ds_min": df["ds"].min().strftime(fmt),
-        "ds_max": df["ds"].max().strftime(fmt),
+        "n_obs": int(train_df.shape[0]),
+        "ds_min": train_df["ds"].min().strftime(fmt),
+        "ds_max": train_df["ds"].max().strftime(fmt),
         "forecast_ds_min": forecast_ds_min,
         "forecast_ds_max": forecast_ds_max,
     }
@@ -403,11 +451,23 @@ def run_forecast_from_df(df: pd.DataFrame, horizon: int = 12):
     return out
 
 
-def run_forecast_from_csv(path: str, horizon: int = 12):
+def run_forecast_from_csv(
+    path: str,
+    horizon: int = 12,
+    train_fraction: float = 1.0,
+    min_train_points: int = 5,
+    nrounds: int = 50,
+):
     """
     Read a CSV from `path`, expecting `ds` and `y` columns, and run a forecast.
 
     Designed for use from the browser via Pyodide.
     """
     df = pd.read_csv(path)
-    return run_forecast_from_df(df, horizon=horizon)
+    return run_forecast_from_df(
+        df,
+        horizon=horizon,
+        train_fraction=train_fraction,
+        min_train_points=min_train_points,
+        nrounds=nrounds,
+    )
