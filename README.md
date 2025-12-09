@@ -12,19 +12,19 @@ PyTorch modules for XGBoost and LightGBM.
 
 ## What is GBNet?
 
-Gradient boosting libraries like XGBoost and LightGBM are excellent for tabular data, but can be cumbersome to extend with custom losses or architectures because you must supply gradients and Hessians by hand.
+Gradient boosting (GBM) libraries like XGBoost and LightGBM are excellent for tabular data but can be cumbersome to extend with custom losses or model architectures because you must supply gradients and Hessians by hand.
 
-GBNet wraps these libraries in PyTorch modules so you can:
+GBNet wraps GBM libraries in PyTorch Modules so you can:
 
 - Define losses and architectures in plain PyTorch
 - Let PyTorch autograd compute gradients / Hessians
 - Use XGBoost / LightGBM / boosted linear layers as building blocks inside larger models
 
-At the core are three PyTorch Modules:
+At the core of GBNet are three PyTorch Modules:
 
 - `gbnet.xgbmodule.XGBModule` – XGBoost as a PyTorch Module
 - `gbnet.lgbmodule.LGBModule` – LightGBM as a PyTorch Module
-- `gbnet.gblinear.GBLinear` – a linear layer PyTorch Module trained with boosting instead of SGD
+- `gbnet.gblinear.GBLinear` – a linear PyTorch Module trained with boosting instead of via gradient descent methods
 
 On top of these, GBNet ships higher-level models in `gbnet.models`, including forecasting, ordinal regression and survival models.
 
@@ -38,13 +38,13 @@ GBNet is on PyPI:
 pip install gbnet
 ```
 
-Using a virtual environment or conda environment is recommended. If you run into build / wheel issues for these dependencies, install them first following their platform-specific instructions, then install `gbnet`.
+Using a virtual environment or conda environment is recommended. If you run into build / wheel issues for key dependencies (PyTorch, XGBoost, LightGBM), install them first following their platform-specific instructions, then install `gbnet`.
 
 ---
 
-## Quick Start: XGBoost as a PyTorch Module
+## Quick Start: GBMs as PyTorch Modules
 
-Basic pattern: treat `XGBModule` as a PyTorch `nn.Module`, use any PyTorch loss, and call `gb_step()` to advance the boosted model.
+**Basic pattern**: treat `XGBModule` or `LGBModule` each as a PyTorch `nn.Module`, build the rest of your model architecture using Pytorch, and call `gb_step()` during training to advance the boosted model. Updating PyTorch components follows its usual `step()` logic.
 
 ```python
 import numpy as np
@@ -92,11 +92,10 @@ losses                    # decrease to near zero
 
 Key ideas:
 
-- Training data must stay fixed while training (no changing the dataset between iterations). In this way, model training is closer to GBM training rather than Neural Network training.
 - Gradients / Hessians are extracted from the PyTorch graph; no need to implement them manually.
 - `gb_step()` is the “one more boosting round” operation.
-
-The `LGBModule` interface is analogous but uses LightGBM under the hood.
+- `XGBModule` and `LGBModule`, as sums of trees, cannot propagate gradients; thus they must sit in the first layer of your architecture.
+- Training data must stay fixed while training (no mini-batching). In this way, model training is closer to GBM training rather than Neural Network training.
 
 ---
 
