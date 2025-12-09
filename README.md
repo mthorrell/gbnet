@@ -12,7 +12,7 @@ PyTorch modules for XGBoost and LightGBM.
 
 ## What is GBNet?
 
-Gradient boosting libraries like XGBoost and LightGBM are excellent for tabular data, but can be hard to extend with custom losses or architectures because you must supply gradients and Hessians by hand.
+Gradient boosting libraries like XGBoost and LightGBM are excellent for tabular data, but can be cumbersome to extend with custom losses or architectures because you must supply gradients and Hessians by hand.
 
 GBNet wraps these libraries in PyTorch modules so you can:
 
