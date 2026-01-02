@@ -4,8 +4,6 @@
 
 PyTorch modules for XGBoost and LightGBM.
 
-[**Link to Forecast App**](https://mthorrell.github.io/gbnet/web/app/)
-
 ![alt text](image.png)
 
 ---
@@ -124,7 +122,7 @@ forecast_df = model.predict(df)
 print(forecast_df.head())
 ```
 
-See `examples/simple_forecast_example.ipynb` and the web demo under `web/` for more complete forecasting examples.
+See `examples/simple_forecast_example.ipynb` for a more complete forecasting example.
 
 ### Ordinal Regression
 
@@ -158,7 +156,6 @@ Example notebooks:
   - `ordinal_regression_comparison.ipynb`
   - `hazard_survival_example.ipynb`
   - `discrete_survival_examples.ipynb`
-- `web/` – browser-only forecasting app (served via GitHub Pages)
 - `docs/` – docs site
 
 Start with the quick-start code above, then open the notebooks in `examples/` to see end-to-end workflows.
@@ -191,4 +188,3 @@ If you use GBNet in academic work, please cite:
 Horrell, M., (2025). GBNet: Gradient Boosting packages integrated into PyTorch.
 Journal of Open Source Software, 10(111), 8047, https://doi.org/10.21105/joss.08047
 ```
-
