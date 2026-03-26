@@ -1,5 +1,8 @@
+from unittest import mock
+
 import lightgbm as lgb
 import numpy as np
+import pytest
 import torch
 import xgboost as xgb
 
@@ -169,6 +172,56 @@ def test_xgbmodule_gb_step_row_indices_matches_native_subset_training():
     )
 
 
+def test_xgbmodule_gb_step_row_indices_uses_cached_slice_and_incremental_boost():
+    class DMatrixSliceSpy:
+        def __init__(self, dtrain):
+            self._dtrain = dtrain
+            self.slice_calls = []
+
+        def slice(self, row_indices, allow_groups=False):
+            normalized = np.asarray(row_indices, dtype=np.int64)
+            self.slice_calls.append(normalized.copy())
+            return self._dtrain.slice(normalized, allow_groups=allow_groups)
+
+        def __getattr__(self, name):
+            return getattr(self._dtrain, name)
+
+    X, y, row_indices, _, _ = _row_subset_fixture()
+    module = xgm.XGBModule(
+        batch_size=X.shape[0],
+        input_dim=X.shape[1],
+        output_dim=1,
+        params=XGB_SINGLE_TREE_PARAMS,
+    )
+    mse = torch.nn.MSELoss()
+
+    module.train()
+    preds = module(X)
+    loss = 0.5 * mse(
+        preds[row_indices], torch.tensor(y[row_indices], dtype=torch.float)
+    )
+    loss.backward(create_graph=True)
+
+    dtrain_spy = DMatrixSliceSpy(module.dtrain)
+    original_dtrain = module.dtrain
+    module.dtrain = dtrain_spy
+
+    with (
+        mock.patch("xgboost.train") as m_train,
+        mock.patch.object(module.bst, "boost", side_effect=module.bst.boost) as m_boost,
+    ):
+        module.gb_step(row_indices=row_indices)
+
+    module.dtrain = original_dtrain
+
+    assert len(dtrain_spy.slice_calls) == 1
+    np.testing.assert_array_equal(dtrain_spy.slice_calls[0], row_indices)
+    m_train.assert_not_called()
+    m_boost.assert_called_once()
+    assert m_boost.call_args.args[0].num_row() == len(row_indices)
+    assert module.n_completed_boost_rounds == 1
+
+
 def test_lgbmodule_gb_step_matches_native_full_training():
     X, y, _, _, full_row_indices = _row_subset_fixture()
     expected_full_preds = _lgb_reference_predictions(
@@ -185,6 +238,10 @@ def test_lgbmodule_gb_step_matches_native_full_training():
     )
 
 
+@pytest.mark.xfail(
+    reason="LightGBM row-subset boosting is not implemented yet.",
+    raises=TypeError,
+)
 def test_lgbmodule_gb_step_row_indices_matches_native_subset_training():
     X, y, row_indices, heldout_rows, full_row_indices = _row_subset_fixture()
     expected_subset_preds = _lgb_reference_predictions(

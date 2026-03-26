@@ -151,12 +151,45 @@ class XGBModule(BaseGBModule):
     def gb_calc(self):
         self.grad, self.hess = self._get_grad_hess_FX()
 
-    def gb_step(self):
+    def _normalize_row_indices(self, row_indices):
+        if row_indices is None:
+            return None
+
+        if torch.is_tensor(row_indices):
+            row_indices = row_indices.detach().cpu().numpy()
+        else:
+            row_indices = np.asarray(row_indices)
+
+        assert row_indices.ndim == 1, "row_indices must be a 1-D sequence"
+        assert row_indices.size > 0, "row_indices must contain at least one row"
+        assert row_indices.dtype.kind in {
+            "i",
+            "u",
+        }, "row_indices must contain integer row indices"
+
+        row_indices = row_indices.astype(np.int64, copy=False)
+        assert (
+            self.training_n is not None
+        ), "row_indices cannot be used before training data is set"
+        assert np.all(
+            (0 <= row_indices) & (row_indices < self.training_n)
+        ), "row_indices must be within the training row range"
+        assert (
+            np.unique(row_indices).size == row_indices.size
+        ), "row_indices must not contain duplicates"
+        return row_indices
+
+    def gb_step(self, row_indices=None):
         """Performs a gradient boosting step to update the model.
 
         This method:
         1. Computes gradients and hessians from the current predictions
         3. Updates the internal boosting model
+
+        Args:
+            row_indices: Optional 1-D integer indices selecting which training
+                rows feed the next boosting round. Predictions are still kept
+                for the full fixed training set.
 
         The gradients are scaled by batch size and hessians are clipped to a minimum value
         to ensure numerical stability.
@@ -167,23 +200,33 @@ class XGBModule(BaseGBModule):
         if self.grad is None and self.hess is None:
             self.gb_calc()
 
-        self._gb_step_grad_hess(self.grad, self.hess)
+        row_indices = self._normalize_row_indices(row_indices)
+        self._gb_step_grad_hess(self.grad, self.hess, row_indices=row_indices)
         self.grad = None
         self.hess = None
 
-    def _gb_step_grad_hess(self, grad, hess):
+    def _gb_step_grad_hess(self, grad, hess, row_indices=None):
+        dtrain = self.dtrain
+        if row_indices is not None:
+            index_tensor = torch.as_tensor(
+                row_indices, dtype=torch.long, device=grad.device
+            )
+            grad = grad.index_select(0, index_tensor)
+            hess = hess.index_select(0, index_tensor)
+            dtrain = self.dtrain.slice(row_indices)
+
         obj = XGBObj(grad, hess)
-        g, h = obj(np.zeros([self.batch_size, self.output_dim]), None)
+        g, h = obj(np.zeros([grad.shape[0], self.output_dim]), None)
 
         if xgb.__version__ <= "2.0.3":
             self.bst.boost(
-                self.dtrain,
+                dtrain,
                 g,
                 h,
             )
         else:
             self.bst.boost(
-                self.dtrain,
+                dtrain,
                 self.n_completed_boost_rounds + 1,
                 g,
                 h,
