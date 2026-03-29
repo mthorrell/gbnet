@@ -7,4 +7,4 @@ Layout:
 - `py/`: Python sources copied from `gbnet` that are safe for in-browser running (`forecasting_xgb_only.py` only).
 
 Quick start:
-1. Visit `https://mthorrell.github.io/gbnet/web/app/`. Or serve on your own with `python -m http.server 8000 --directory web`.
+1. Visit `https://mthorrell.github.io/gbnet/web/app/`; or serve on your own with `python -m http.server 8000 --directory web`.
