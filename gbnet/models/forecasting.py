@@ -11,7 +11,7 @@ from gbnet.gblinear import GBLinear
 
 
 def pd_datetime_to_seconds(x: pd.Series):
-    return pd.to_numeric(x) / 1000000000.0  # convert to seconds
+    return (x - pd.Timestamp("1970-01-01")) / pd.Timedelta(seconds=1)
 
 
 def loadModule(module):
