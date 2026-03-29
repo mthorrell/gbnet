@@ -150,9 +150,17 @@ class TestInputChecking(TestCase):
         result = module._input_checking_setting(dmatrix)
         self.assertIs(result, module.dtrain)
         self.assertIs(result, dmatrix)
-        np.testing.assert_array_equal(
-            result.get_label(), np.zeros(module.batch_size * module.output_dim)
-        )
+        if xgb.__version__ >= "3.2.0":
+            np.testing.assert_array_equal(
+                result.get_label(),
+                np.zeros(module.batch_size * module.output_dim).reshape(
+                    [module.batch_size, module.output_dim]
+                ),
+            )
+        else:
+            np.testing.assert_array_equal(
+                result.get_label(), np.zeros(module.batch_size * module.output_dim)
+            )
         self.assertEqual(module.training_n, dmatrix.num_row())
 
     def test_input_is_ndarray_training_true_dtrain_none(self):
@@ -162,9 +170,17 @@ class TestInputChecking(TestCase):
         result = module._input_checking_setting(data)
         self.assertIs(result, module.dtrain)
         self.assertIsInstance(result, xgb.DMatrix)
-        np.testing.assert_array_equal(
-            result.get_label(), np.zeros(module.batch_size * module.output_dim)
-        )
+        if xgb.__version__ >= "3.2.0":
+            np.testing.assert_array_equal(
+                result.get_label(),
+                np.zeros(module.batch_size * module.output_dim).reshape(
+                    [module.batch_size, module.output_dim]
+                ),
+            )
+        else:
+            np.testing.assert_array_equal(
+                result.get_label(), np.zeros(module.batch_size * module.output_dim)
+            )
         self.assertEqual(module.training_n, data.shape[0])
 
     def test_input_is_dmatrix_training_true_dtrain_set_same_nrows(self):
