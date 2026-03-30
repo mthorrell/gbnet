@@ -1,3 +1,4 @@
+import inspect
 from typing import Union
 import warnings
 import numpy as np
@@ -7,6 +8,24 @@ import xgboost as xgb
 from torch import nn
 
 from gbnet.base import BaseGBModule
+
+
+def _version_tuple(version_str):
+    version_values = []
+    for token in version_str.replace("-", ".").split("."):
+        if token.isdigit():
+            version_values.append(int(token))
+        if len(version_values) == 3:
+            break
+
+    while len(version_values) < 3:
+        version_values.append(0)
+
+    return tuple(version_values)
+
+
+def _xgb_version_at_least(target_version):
+    return _version_tuple(xgb.__version__) >= target_version
 
 
 class XGBModule(BaseGBModule):
@@ -62,6 +81,7 @@ class XGBModule(BaseGBModule):
         self.n_completed_boost_rounds = 0
         self.dtrain = None
         self.training_n = None
+        self._boost_with_iteration = None
 
         self.FX = nn.Parameter(
             torch.tensor(
@@ -175,20 +195,52 @@ class XGBModule(BaseGBModule):
         obj = XGBObj(grad, hess)
         g, h = obj(np.zeros([self.batch_size, self.output_dim]), None)
 
-        if xgb.__version__ <= "2.0.3":
-            self.bst.boost(
-                self.dtrain,
-                g,
-                h,
-            )
-        else:
-            self.bst.boost(
-                self.dtrain,
-                self.n_completed_boost_rounds + 1,
-                g,
-                h,
-            )
+        self._run_boost_compat(g, h)
         self.n_completed_boost_rounds = self.n_completed_boost_rounds + 1
+
+    def _run_boost_compat(self, grad, hess):
+        if self._boost_with_iteration is None:
+            try:
+                boost_signature = inspect.signature(type(self.bst).boost)
+                self._boost_with_iteration = "iteration" in boost_signature.parameters
+            except (TypeError, ValueError):
+                self._boost_with_iteration = _xgb_version_at_least((2, 1, 0))
+
+        if self._boost_with_iteration:
+            call_order = ("with_iteration", "legacy")
+        else:
+            call_order = ("legacy", "with_iteration")
+
+        last_error = None
+        for call_style in call_order:
+            try:
+                if call_style == "with_iteration":
+                    self.bst.boost(
+                        self.dtrain,
+                        self.n_completed_boost_rounds + 1,
+                        grad=grad,
+                        hess=hess,
+                    )
+                    self._boost_with_iteration = True
+                else:
+                    self.bst.boost(
+                        self.dtrain,
+                        grad,
+                        hess,
+                    )
+                    self._boost_with_iteration = False
+                return
+            except TypeError as exc:
+                error_message = str(exc)
+                signature_mismatch = (
+                    "positional argument" in error_message
+                    or "unexpected keyword argument" in error_message
+                )
+                if not signature_mismatch:
+                    raise
+                last_error = exc
+
+        raise last_error
 
     def get_extra_state(self):
         return self.bst.save_raw()
@@ -212,7 +264,7 @@ class XGBObj:
             M = preds.shape[0]
             N = 1
 
-        if xgb.__version__ >= "2.1.0":
+        if _xgb_version_at_least((2, 1, 0)):
             g = self.grad.detach().numpy().reshape([M, N])
             h = self.hess.detach().numpy().reshape([M, N])
         else:

@@ -55,6 +55,61 @@ def test_XGBObj():
         ograd, ohess = obj(grad, hess)
         assert np.all(np.isclose(ograd, grad.detach().numpy()))
         assert np.all(np.isclose(ohess, hess.detach().numpy()))
+    with mock.patch("xgboost.__version__", new="2.10.0"):
+        ograd, ohess = obj(grad, hess)
+        assert np.all(np.isclose(ograd, grad.detach().numpy()))
+        assert np.all(np.isclose(ohess, hess.detach().numpy()))
+
+
+def test_boost_compat_new_api():
+    class NewAPIBooster:
+        def __init__(self):
+            self.calls = []
+
+        def boost(self, dtrain, iteration, *, grad=None, hess=None):
+            self.calls.append((dtrain, iteration, grad, hess))
+
+    module = xgm.XGBModule(2, 1, 1)
+    module.bst = NewAPIBooster()
+    module.dtrain = object()
+    module.n_completed_boost_rounds = 0
+    module._boost_with_iteration = None
+
+    grad = np.ones((2, 1))
+    hess = np.ones((2, 1))
+    module._run_boost_compat(grad, hess)
+
+    assert len(module.bst.calls) == 1
+    _, iteration, called_grad, called_hess = module.bst.calls[0]
+    assert iteration == 1
+    np.testing.assert_array_equal(called_grad, grad)
+    np.testing.assert_array_equal(called_hess, hess)
+    assert module._boost_with_iteration
+
+
+def test_boost_compat_legacy_api():
+    class LegacyBooster:
+        def __init__(self):
+            self.calls = []
+
+        def boost(self, dtrain, grad, hess):
+            self.calls.append((dtrain, grad, hess))
+
+    module = xgm.XGBModule(2, 1, 1)
+    module.bst = LegacyBooster()
+    module.dtrain = object()
+    module.n_completed_boost_rounds = 0
+    module._boost_with_iteration = None
+
+    grad = np.ones((2, 1))
+    hess = np.ones((2, 1))
+    module._run_boost_compat(grad, hess)
+
+    assert len(module.bst.calls) == 1
+    _, called_grad, called_hess = module.bst.calls[0]
+    np.testing.assert_array_equal(called_grad, grad)
+    np.testing.assert_array_equal(called_hess, hess)
+    assert not module._boost_with_iteration
 
 
 class Wrapper(torch.nn.Module):
@@ -151,7 +206,8 @@ class TestInputChecking(TestCase):
         self.assertIs(result, module.dtrain)
         self.assertIs(result, dmatrix)
         np.testing.assert_array_equal(
-            result.get_label(), np.zeros(module.batch_size * module.output_dim)
+            result.get_label().reshape(-1),
+            np.zeros(module.batch_size * module.output_dim),
         )
         self.assertEqual(module.training_n, dmatrix.num_row())
 
@@ -163,7 +219,8 @@ class TestInputChecking(TestCase):
         self.assertIs(result, module.dtrain)
         self.assertIsInstance(result, xgb.DMatrix)
         np.testing.assert_array_equal(
-            result.get_label(), np.zeros(module.batch_size * module.output_dim)
+            result.get_label().reshape(-1),
+            np.zeros(module.batch_size * module.output_dim),
         )
         self.assertEqual(module.training_n, data.shape[0])
 
