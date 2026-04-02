@@ -140,6 +140,20 @@ class TestAssertions(TestCase):
             "base_score should not be specified in params", str(context.exception)
         )
 
+    def test_gb_step_row_indices_rejects_duplicates(self):
+        module = xgm.XGBModule(5, 3, 1)
+        module(np.random.rand(5, 3))
+        with self.assertRaises(AssertionError) as context:
+            module._normalize_row_indices(np.array([0, 0, 2], dtype=np.int64))
+        self.assertIn("must not contain duplicates", str(context.exception))
+
+    def test_gb_step_row_indices_rejects_out_of_range(self):
+        module = xgm.XGBModule(5, 3, 1)
+        module(np.random.rand(5, 3))
+        with self.assertRaises(AssertionError) as context:
+            module._normalize_row_indices(np.array([0, 5], dtype=np.int64))
+        self.assertIn("within the training row range", str(context.exception))
+
 
 class TestInputChecking(TestCase):
     def test_input_is_dmatrix_training_true_dtrain_none(self):
