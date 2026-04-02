@@ -1,14 +1,6 @@
 gbnet.tests package
 ===================
 
-Subpackages
------------
-
-.. toctree::
-   :maxdepth: 4
-
-   gbnet.tests.experimental
-
 Submodules
 ----------
 

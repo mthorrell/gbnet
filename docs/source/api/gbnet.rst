@@ -7,7 +7,6 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
-   gbnet.experimental
    gbnet.models
    gbnet.tests
 
