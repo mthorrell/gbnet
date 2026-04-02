@@ -226,7 +226,7 @@ class XGBModule(BaseGBModule):
             )
         else:
             self.bst.boost(
-                dtrain=self.dtrain,
+                dtrain,
                 iteration=self.n_completed_boost_rounds + 1,
                 grad=g,
                 hess=h,
