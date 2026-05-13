@@ -193,6 +193,9 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         # Pre-compute event indicators for efficiency
         self.event_indicators_ = self.y.groupby("unit_id")["event"].last().values
         self.n_samples_ = len(self.event_indicators_)
+        total_events = self.y["event"].sum()
+        total_exposure = self.y["time"].sum()
+        self.base_log_hazard_ = np.log(total_events / total_exposure)
 
         # Initialize hazard integrator with appropriate covariate columns
         covariate_cols = [
@@ -204,6 +207,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
             params=self.params,
             min_hess=self.min_hess,
             module_type=self.module_type,
+            base_log_hazard=self.base_log_hazard_,
         )
 
         # Training loop

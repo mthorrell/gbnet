@@ -48,6 +48,7 @@ class TestHazardIntegratorInit(TestCase):
         self.assertEqual(integrator.params, {})
         self.assertEqual(integrator.min_hess, 0.0)
         self.assertEqual(integrator.module_type, "XGBModule")
+        self.assertEqual(integrator.base_log_hazard, 0.0)
         self.assertIsNone(integrator.gb_module)
         self.assertEqual(integrator.static_data, {})
 
@@ -57,18 +58,21 @@ class TestHazardIntegratorInit(TestCase):
         params = {"max_depth": 3, "learning_rate": 0.1}
         min_hess = 0.1
         module_type = "LGBModule"
+        base_log_hazard = np.log(0.25)
 
         integrator = HazardIntegrator(
             covariate_cols=covariate_cols,
             params=params,
             min_hess=min_hess,
             module_type=module_type,
+            base_log_hazard=base_log_hazard,
         )
 
         self.assertEqual(integrator.covariate_cols, ["time"] + covariate_cols)
         self.assertEqual(integrator.params, params)
         self.assertEqual(integrator.min_hess, min_hess)
         self.assertEqual(integrator.module_type, module_type)
+        self.assertEqual(integrator.base_log_hazard, base_log_hazard)
         self.assertIsNone(integrator.gb_module)
         self.assertEqual(integrator.static_data, {})
 
@@ -278,6 +282,34 @@ class TestHazardIntegratorForward(TestCase):
 
         # Check that hazard values are correct (exp of log_hazard)
         expected_hazard = torch.exp(torch.tensor([0.1, 0.2, 0.15, 0.25, 0.3]))
+        torch.testing.assert_close(result["hazard"], expected_hazard)
+
+    def test_forward_baseline_log_hazard_offset(self):
+        """Test that baseline log hazard is added to module output."""
+        integrator = HazardIntegrator(base_log_hazard=np.log(0.25))
+
+        mock_gb_module = MagicMock()
+        mock_gb_module.return_value = torch.tensor(
+            [[0.1], [0.2], [0.15], [0.25], [0.3]]
+        )
+        integrator.gb_module = mock_gb_module
+
+        integrator.static_data = {
+            "dmatrix": "mock_dmatrix",
+            "num_rows": 5,
+            "num_cols": 1,
+            "unit_ids": torch.tensor([0, 0, 1, 1, 1]),
+            "dt": torch.tensor([0.0, 1.0, 0.0, 1.0, 1.0]),
+            "same_unit": torch.tensor([False, True, False, True, True]),
+            "unsort_idx": torch.tensor([0, 1, 2, 3, 4]),
+            "interleave_amts": torch.tensor([2, 3]),
+        }
+
+        result = integrator.forward(self.df)
+
+        expected_hazard = torch.exp(
+            torch.tensor(np.log(0.25)) + torch.tensor([0.1, 0.2, 0.15, 0.25, 0.3])
+        )
         torch.testing.assert_close(result["hazard"], expected_hazard)
 
     def test_forward_survival_calculation(self):

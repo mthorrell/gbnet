@@ -158,6 +158,14 @@ class TestHazardSurvivalModel(TestCase):
         self.assertIsNotNone(self.model.integrator_)
         self.assertEqual(len(self.model.losses_), 10)
         self.assertEqual(self.model.data_format_, "static")
+        self.assertEqual(
+            self.model.base_log_hazard_,
+            np.log(self.y["event"].sum() / self.y["time"].sum()),
+        )
+        self.assertEqual(
+            self.model.integrator_.base_log_hazard,
+            self.model.base_log_hazard_,
+        )
 
     def test_fit_time_varying(self):
         """Test fitting with time-varying data."""

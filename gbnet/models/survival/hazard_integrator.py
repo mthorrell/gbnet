@@ -24,6 +24,7 @@ class HazardIntegrator(torch.nn.Module):
         params: Dict = {},
         min_hess: float = 0.0,
         module_type: str = "XGBModule",
+        base_log_hazard: float = 0.0,
     ):
         """
         Parameters
@@ -37,11 +38,14 @@ class HazardIntegrator(torch.nn.Module):
         module_type
             Type of gradient boosting module to use, either "XGBModule" or "LGBModule".
             Defaults to "XGBModule".
+        base_log_hazard
+            Baseline log-hazard offset.
         """
         super().__init__()
         self.params = params.copy()
         self.min_hess = min_hess
         self.module_type = module_type
+        self.base_log_hazard = base_log_hazard
         self.covariate_cols = ["time"] + covariate_cols
         self.gb_module: Optional[object] = None
         self.Module = loadModule(module_type)
@@ -129,7 +133,7 @@ class HazardIntegrator(torch.nn.Module):
             )
 
         # 1. Model inference: This is the dynamic part of the forward pass
-        log_hazard = self.gb_module(dmatrix).flatten()  # [N]
+        log_hazard = self.base_log_hazard + self.gb_module(dmatrix).flatten()  # [N]
         hazard = torch.exp(log_hazard)  # λ(t)
 
         # 2. Per-row trapezoidal slice for hazard integration: λ(t) * Δt
