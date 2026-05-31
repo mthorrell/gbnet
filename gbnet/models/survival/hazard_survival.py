@@ -1,4 +1,5 @@
 from typing import Optional
+import warnings
 
 import torch
 import numpy as np
@@ -31,6 +32,12 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         Defaults to "XGBModule".
     min_hess : float, optional
         Minimum hessian value for numerical stability. Defaults to 0.0.
+    input_is_expanded : bool, optional
+        If True, trust X already contains the intended unit-time rows and skip
+        internal expansion. Defaults to False.
+    integration_method : str, optional
+        Method for integrating hazards and survival estimates. One of
+        "trapezoid", "stepwise_left", or "stepwise_right".
 
     Attributes
     ----------
@@ -76,7 +83,10 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         params=None,
         module_type="LGBModule",
         min_hess=0.0,
+        input_is_expanded=False,
+        integration_method="trapezoid",
     ):
+        assert integration_method in {"trapezoid", "stepwise_left", "stepwise_right"}
         if params is None:
             params = {"max_delta_step": 1 if module_type == "XGBModule" else 5}
 
@@ -87,6 +97,8 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
             nrounds = 50 if module_type == "XGBModule" else 100
         self.nrounds = nrounds
         self.min_hess = min_hess
+        self.input_is_expanded = input_is_expanded
+        self.integration_method = integration_method
         # self.integrator_ = None
         self.losses_ = []
         self.data_format_ = None
@@ -101,6 +113,40 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
             .reset_index(drop=True)
             .copy()
         )
+
+    def _warn_if_expanded_input_missing_times(self, X, y):
+        if isinstance(y, pd.DataFrame):
+            global_times = np.sort(X["time"].unique())
+            y_times = y.set_index("unit_id")["time"]
+            missing_units = []
+            for unit_id, unit_df in X.groupby("unit_id"):
+                if unit_id not in y_times.index:
+                    continue
+                unit_times = unit_df["time"].to_numpy()
+                needed_times = global_times[
+                    (global_times >= unit_times.min())
+                    & (global_times <= y_times[unit_id])
+                ]
+                if np.setdiff1d(needed_times, unit_times).size:
+                    missing_units.append(unit_id)
+        else:
+            requested_times = np.sort(np.asarray(y))
+            missing_units = []
+            for unit_id, unit_df in X.groupby("unit_id"):
+                unit_times = unit_df["time"].to_numpy()
+                needed_times = requested_times[
+                    (requested_times >= unit_times.min())
+                    & (requested_times <= unit_times.max())
+                ]
+                if np.setdiff1d(needed_times, unit_times).size:
+                    missing_units.append(unit_id)
+
+        if missing_units:
+            warnings.warn(
+                "Expanded input is missing needed time points for "
+                f"{len(missing_units)} unit(s).",
+                UserWarning,
+            )
 
     def _validate_and_convert_input_data(self, X, y):
         """Validate input data according to the new requirements.
@@ -120,6 +166,8 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         """
         X = X.copy()
         assert "unit_id" in X
+        if self.input_is_expanded:
+            assert "time" in X
         if isinstance(y, pd.DataFrame):
             assert "unit_id" in y
             assert "time" in y
@@ -135,7 +183,9 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
             assert "time" in X
 
         modified_X = X.copy()
-        if is_static:
+        if self.input_is_expanded:
+            self._warn_if_expanded_input_missing_times(modified_X, y)
+        elif is_static:
             if "time" not in X.columns:
                 # Copy time from y to X
                 if isinstance(y, np.ndarray):
@@ -156,11 +206,12 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
                     )
             modified_X = self._static_to_minimal_time_varying_dataset(modified_X)
 
-        modified_X = (
-            expand_overlapping_units_locf(modified_X)
-            if not isinstance(y, np.ndarray)
-            else expand_overlapping_units_locf(modified_X, y)
-        )
+        if not self.input_is_expanded:
+            modified_X = (
+                expand_overlapping_units_locf(modified_X)
+                if not isinstance(y, np.ndarray)
+                else expand_overlapping_units_locf(modified_X, y)
+            )
 
         return ("static" if is_static else "time_varying", modified_X, y)
 
@@ -204,6 +255,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
             params=self.params,
             min_hess=self.min_hess,
             module_type=self.module_type,
+            integration_method=self.integration_method,
         )
 
         # Training loop
@@ -238,7 +290,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         if not isinstance(y, pd.DataFrame):
             raise ValueError("y must be a pandas DataFrame")
 
-        data_format_, exp_df, y = self._validate_and_convert_input_data(X, y)
+        _, exp_df, y = self._validate_and_convert_input_data(X, y)
         return self.integrator_(exp_df)
 
     def predict_times(self, X, times=None):
@@ -251,7 +303,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
 
         X = X.copy()
 
-        data_format_, exp_df, y = self._validate_and_convert_input_data(X, times)
+        _, exp_df, y = self._validate_and_convert_input_data(X, times)
         exp_df = exp_df.reset_index(drop=True).copy()
         output = self.integrator_(exp_df)
 
@@ -287,6 +339,26 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         )
         output["predicted_median_time"] = output["predicted_median_time"].fillna(0)
         return output
+
+    def score(self, X, y):
+        """Return the negative log likelihood score."""
+        check_is_fitted(self, "integrator_")
+        if not isinstance(X, pd.DataFrame):
+            raise ValueError("X must be a pandas DataFrame")
+        if not isinstance(y, pd.DataFrame):
+            raise ValueError("y must be a pandas DataFrame")
+
+        _, exp_df, y = self._validate_and_convert_input_data(X, y)
+        out = self.integrator_(exp_df, return_survival_estimates=False)
+        event_indicators = y.groupby("unit_id")["event"].last().values
+        loss = (
+            out["unit_integrated_hazard"].sum()
+            - (
+                torch.log(out["unit_last_hazard"])
+                * torch.tensor(event_indicators == 1, dtype=torch.float32)
+            ).sum()
+        ) / len(event_indicators)
+        return loss.detach().item()
 
 
 def expand_overlapping_units_locf(

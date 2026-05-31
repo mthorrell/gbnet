@@ -312,6 +312,78 @@ class TestHazardIntegratorForward(TestCase):
         self.assertTrue(torch.all(result["survival"] >= 0))
         self.assertTrue(torch.all(result["survival"] <= 1))
 
+    def test_integration_methods_calculate_expected_values(self):
+        """Test hazard and survival integration methods with deterministic values."""
+        df = pd.DataFrame(
+            {
+                "unit_id": [1, 1, 1],
+                "time": [0.0, 1.0, 3.0],
+            }
+        )
+        hazards = torch.tensor([2.0, 4.0, 8.0])
+
+        expected = {
+            "trapezoid": {
+                "lambda": torch.tensor([15.0]),
+                "survival": torch.exp(-torch.tensor([0.0, 3.0, 15.0])),
+                "expected_time": torch.tensor(
+                    [
+                        0.5 * (1.0 + torch.exp(torch.tensor(-3.0)))
+                        + (
+                            torch.exp(torch.tensor(-3.0))
+                            + torch.exp(torch.tensor(-15.0))
+                        )
+                    ]
+                ),
+            },
+            "stepwise_left": {
+                "lambda": torch.tensor([10.0]),
+                "survival": torch.exp(-torch.tensor([0.0, 2.0, 10.0])),
+                "expected_time": torch.tensor(
+                    [1.0 + 2.0 * torch.exp(torch.tensor(-2.0))]
+                ),
+            },
+            "stepwise_right": {
+                "lambda": torch.tensor([20.0]),
+                "survival": torch.exp(-torch.tensor([0.0, 4.0, 20.0])),
+                "expected_time": torch.tensor(
+                    [
+                        torch.exp(torch.tensor(-4.0))
+                        + 2.0 * torch.exp(torch.tensor(-20.0))
+                    ]
+                ),
+            },
+        }
+
+        for integration_method, expected_values in expected.items():
+            with self.subTest(integration_method=integration_method):
+                integrator = HazardIntegrator(integration_method=integration_method)
+                mock_gb_module = MagicMock()
+                mock_gb_module.return_value = torch.log(hazards).unsqueeze(1)
+                integrator.gb_module = mock_gb_module
+                integrator.static_data = {
+                    "dmatrix": "mock_dmatrix",
+                    "num_rows": 3,
+                    "num_cols": 1,
+                    "unit_ids": torch.tensor([0, 0, 0]),
+                    "dt": torch.tensor([0.0, 1.0, 2.0]),
+                    "same_unit": torch.tensor([False, True, True]),
+                    "unsort_idx": torch.tensor([0, 1, 2]),
+                    "interleave_amts": torch.tensor([3]),
+                }
+
+                result = integrator.forward(df)
+
+                torch.testing.assert_close(
+                    result["unit_integrated_hazard"], expected_values["lambda"]
+                )
+                torch.testing.assert_close(
+                    result["survival"], expected_values["survival"]
+                )
+                torch.testing.assert_close(
+                    result["unit_expected_time"], expected_values["expected_time"]
+                )
+
 
 class TestHazardIntegratorEdgeCases(TestCase):
     """Test HazardIntegrator edge cases and error conditions."""
