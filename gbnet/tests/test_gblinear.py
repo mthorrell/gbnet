@@ -54,6 +54,19 @@ def test_gblinear_training_step():
     assert not torch.allclose(model.linear.bias, init_bias)
 
 
+def test_gblinear_fixed_hess_gb_calc():
+    model = GBLinear(input_dim=3, output_dim=2, fixed_hess=0.25)
+    x = torch.randn(4, 3)
+    y = torch.randn(4, 2)
+
+    out = model(x)
+    loss = nn.MSELoss()(out, y)
+    loss.backward()
+    model.gb_calc()
+
+    assert torch.allclose(model.h, torch.full_like(model.h, 0.25))
+
+
 def test_ridge_regression():
     # Create synthetic data
     np.random.seed(42)

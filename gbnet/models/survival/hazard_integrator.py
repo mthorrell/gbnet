@@ -23,6 +23,7 @@ class HazardIntegrator(torch.nn.Module):
         covariate_cols: List[str] = [],
         params: Dict = {},
         min_hess: float = 0.0,
+        fixed_hess: float = None,
         module_type: str = "XGBModule",
         integration_method: str = "trapezoid",
     ):
@@ -35,6 +36,8 @@ class HazardIntegrator(torch.nn.Module):
             Parameters for the gradient boosting model.
         min_hess
             Minimum hessian for the gradient boosting model.
+        fixed_hess
+            Fixed positive hessian for the gradient boosting model.
         module_type
             Type of gradient boosting module to use, either "XGBModule" or "LGBModule".
             Defaults to "XGBModule".
@@ -46,6 +49,7 @@ class HazardIntegrator(torch.nn.Module):
         assert integration_method in {"trapezoid", "stepwise_left", "stepwise_right"}
         self.params = params.copy()
         self.min_hess = min_hess
+        self.fixed_hess = fixed_hess
         self.module_type = module_type
         self.integration_method = integration_method
         self.covariate_cols = ["time"] + covariate_cols
@@ -143,7 +147,12 @@ class HazardIntegrator(torch.nn.Module):
         # Lazily initialize the gradient boosting module on the first forward pass
         if self.gb_module is None:
             self.gb_module = self.Module(
-                num_rows, num_features, 1, params=self.params, min_hess=self.min_hess
+                num_rows,
+                num_features,
+                1,
+                params=self.params,
+                min_hess=self.min_hess,
+                fixed_hess=self.fixed_hess,
             )
 
         # 1. Model inference: This is the dynamic part of the forward pass

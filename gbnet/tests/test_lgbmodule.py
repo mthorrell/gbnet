@@ -50,6 +50,38 @@ def test_basic_loss():
     m_train.assert_called_once()
 
 
+def test_fixed_hess_basic_loss():
+    gbm = lgm.LGBModule(5, 3, 1, params={"min_data_in_leaf": 0}, fixed_hess=0.5)
+    floss = torch.nn.MSELoss()
+
+    gbm.zero_grad()
+    np.random.seed(11010)
+    input_dataset = lgb.Dataset(np.random.random([5, 3]))
+    preds = gbm(input_dataset)
+    loss = floss(preds.flatten(), torch.Tensor(np.array([1, 2, 3, 4, 5])).flatten())
+
+    loss.backward()
+
+    m_obj = mock.MagicMock(side_effect=lgm.LightGBObj)
+    m_train = mock.MagicMock(side_effect=lgb.train)
+    with (
+        mock.patch("gbnet.lgbmodule.LightGBObj", m_obj),
+        mock.patch("lightgbm.train", m_train),
+    ):
+        gbm.gb_step()
+
+    assert (
+        np.max(
+            np.abs(
+                m_obj.call_args_list[-1].args[1].detach().numpy() - np.full((5, 1), 0.5)
+            )
+        )
+        < 1e-8
+    )
+
+    m_train.assert_called_once()
+
+
 def test_LightGBObj():
     np.random.seed(10101)
     grad = torch.tensor(np.random.random([20, 10]))

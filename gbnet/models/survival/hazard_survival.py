@@ -83,6 +83,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
         params=None,
         module_type="LGBModule",
         min_hess=0.0,
+        fixed_hess=None,
         input_is_expanded=False,
         integration_method="trapezoid",
     ):
@@ -97,6 +98,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
             nrounds = 50 if module_type == "XGBModule" else 100
         self.nrounds = nrounds
         self.min_hess = min_hess
+        self.fixed_hess = fixed_hess
         self.input_is_expanded = input_is_expanded
         self.integration_method = integration_method
         # self.integrator_ = None
@@ -254,6 +256,7 @@ class HazardSurvivalModel(BaseEstimator, RegressorMixin):
             covariate_cols=covariate_cols,
             params=self.params,
             min_hess=self.min_hess,
+            fixed_hess=self.fixed_hess,
             module_type=self.module_type,
             integration_method=self.integration_method,
         )

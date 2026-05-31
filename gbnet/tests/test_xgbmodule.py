@@ -40,6 +40,34 @@ def test_basic_loss():
     m_boost.assert_called_once()
 
 
+def test_fixed_hess_basic_loss():
+    gbm = xgm.XGBModule(5, 3, 1, fixed_hess=0.5)
+    floss = torch.nn.MSELoss()
+
+    gbm.zero_grad()
+    np.random.seed(11010)
+    input_dmatrix = xgb.DMatrix(np.random.random([5, 3]))
+    preds = gbm(input_dmatrix)
+    loss = floss(preds.flatten(), torch.Tensor(np.array([1, 2, 3, 4, 5])).flatten())
+
+    loss.backward()
+
+    with (
+        mock.patch("gbnet.xgbmodule.XGBObj", side_effect=xgm.XGBObj) as m_obj,
+        mock.patch.object(gbm.bst, "boost", side_effect=gbm.bst.boost) as m_boost,
+    ):
+        gbm.gb_step()
+
+    assert np.all(
+        np.isclose(
+            m_obj.call_args_list[-1].args[1].detach().numpy(),
+            np.full((5, 1), 0.5),
+        )
+    )
+
+    m_boost.assert_called_once()
+
+
 def test_XGBObj():
     np.random.seed(10101)
     grad = torch.tensor(np.random.random([20, 10]))

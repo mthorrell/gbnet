@@ -21,6 +21,8 @@ class XGBModule(BaseGBModule):
         output_dim (int): Dimension of output predictions
         params (dict, optional): Parameters passed to LightGBM. Defaults to {}.
         min_hess (float, optional): Minimum hessian value submitted to LightGBM. Defaults to 0.
+        fixed_hess (float, optional): Fixed positive hessian value submitted to LightGBM.
+            Defaults to None.
 
     Attributes:
         batch_size (int): Size of mini-batches
@@ -31,10 +33,13 @@ class XGBModule(BaseGBModule):
         FX (torch.nn.Parameter): Current predictions tensor
         train_dat (lightgbm.Dataset): Training dataset used for caching
         min_hess (float): Minimum hessian threshold
+        fixed_hess (float): Fixed hessian value
     """
 
-    def __init__(self, batch_size, input_dim, output_dim, params={}, min_hess=0):
-        super(XGBModule, self).__init__()
+    def __init__(
+        self, batch_size, input_dim, output_dim, params={}, min_hess=0, fixed_hess=None
+    ):
+        super(XGBModule, self).__init__(min_hess=min_hess, fixed_hess=fixed_hess)
         self.batch_size = batch_size
         self.input_dim = input_dim
         self.output_dim = output_dim
@@ -51,7 +56,6 @@ class XGBModule(BaseGBModule):
         self.params["objective"] = "reg:squarederror"
         self.params["base_score"] = 0
         self.n_completed_boost_rounds = 0
-        self.min_hess = min_hess
 
         init_matrix = np.zeros([batch_size, input_dim])
         self.bst = xgb.train(

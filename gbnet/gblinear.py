@@ -31,6 +31,8 @@ class GBLinear(BaseGBModule):
         Minimum hessian threshold. Defaults to 0.0.
     lambd : float, optional
         L2 regularization parameter. Defaults to 0.01.
+    fixed_hess : float, optional
+        Fixed positive hessian value. Defaults to None.
 
     Attributes
     ----------
@@ -54,11 +56,11 @@ class GBLinear(BaseGBModule):
         lr: float = 0.5,
         min_hess: float = 0.0,
         lambd: float = 0.01,
+        fixed_hess: float = None,
     ) -> None:
-        super(GBLinear, self).__init__()
+        super(GBLinear, self).__init__(min_hess=min_hess, fixed_hess=fixed_hess)
         self.input_dim = input_dim
         self.output_dim = output_dim
-        self.min_hess = min_hess
         self.bias = bias
         self.lr = lr
         self.lambd = lambd

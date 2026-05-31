@@ -37,6 +37,9 @@ class GBOrd(BaseEstimator, ClassifierMixin):
         Defaults to "LGBModule".
     min_hess : float, optional
         Minimum hessian value for numerical stability. Defaults to 0.0.
+    fixed_hess : float, optional
+        Fixed positive hessian value for the gradient boosting model.
+        Defaults to None.
 
     Attributes
     ----------
@@ -68,6 +71,7 @@ class GBOrd(BaseEstimator, ClassifierMixin):
         params=None,
         module_type="LGBModule",
         min_hess=0.0,
+        fixed_hess=None,
     ):
         if params is None:
             params = {}
@@ -85,6 +89,7 @@ class GBOrd(BaseEstimator, ClassifierMixin):
         self.loss_fn = OrdinalLogisticLoss(num_classes=num_classes)
         self.num_classes = num_classes
         self.min_hess = min_hess
+        self.fixed_hess = fixed_hess
 
     def fit(self, X, y=None):
         self.min_targets = min(y)
@@ -94,7 +99,12 @@ class GBOrd(BaseEstimator, ClassifierMixin):
         assert len(np.unique(y)) == self.num_classes
 
         self.model_ = self.Module(
-            X.shape[0], X.shape[1], 1, params=self.params, min_hess=self.min_hess
+            X.shape[0],
+            X.shape[1],
+            1,
+            params=self.params,
+            min_hess=self.min_hess,
+            fixed_hess=self.fixed_hess,
         )
         self.model_.train()
 

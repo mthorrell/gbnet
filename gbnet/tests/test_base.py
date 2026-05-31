@@ -86,3 +86,71 @@ class TestBaseGBModule(TestCase):
             hess.detach().numpy(),
             np.full((2, 1), 2.0),  # MSE loss has constant hessian of 2.0
         )
+
+    def test_fixed_hess_bypasses_autograd_hessian(self):
+        """Test fixed hessian calculation without second-order autograd graph"""
+
+        class DummyGBModule(BaseGBModule):
+            def _input_checking_setting(self, input_data):
+                pass
+
+            def forward(self, x):
+                pass
+
+            def gb_step(self):
+                pass
+
+        module = DummyGBModule(fixed_hess=0.25)
+        module.batch_size = 2
+        module.output_dim = 1
+        module.FX = torch.nn.Parameter(torch.tensor([[1.0], [3.0]]))
+        target = torch.tensor([[0.0], [1.0]])
+
+        loss = torch.nn.MSELoss()(module.FX, target)
+        loss.backward()
+
+        grad, hess = module._get_grad_hess_FX()
+
+        np.testing.assert_array_almost_equal(
+            grad.detach().numpy(),
+            np.array([[2.0], [4.0]]),
+        )
+        np.testing.assert_array_almost_equal(
+            hess.detach().numpy(),
+            np.full((2, 1), 0.25),
+        )
+
+    def test_fixed_hess_must_be_positive(self):
+        """Test fixed hessian validation"""
+
+        class DummyGBModule(BaseGBModule):
+            def _input_checking_setting(self, input_data):
+                pass
+
+            def forward(self, x):
+                pass
+
+            def gb_step(self):
+                pass
+
+        with self.assertRaises(ValueError):
+            DummyGBModule(fixed_hess=0.0)
+
+        with self.assertRaises(ValueError):
+            DummyGBModule(fixed_hess=-1.0)
+
+    def test_fixed_hess_warns_when_min_hess_is_positive(self):
+        """Test warning when fixed_hess overrides positive min_hess"""
+
+        class DummyGBModule(BaseGBModule):
+            def _input_checking_setting(self, input_data):
+                pass
+
+            def forward(self, x):
+                pass
+
+            def gb_step(self):
+                pass
+
+        with self.assertWarnsRegex(UserWarning, "fixed_hess.*override min_hess"):
+            DummyGBModule(min_hess=1.0, fixed_hess=0.5)

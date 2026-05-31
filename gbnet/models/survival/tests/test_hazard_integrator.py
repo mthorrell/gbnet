@@ -523,6 +523,7 @@ class TestHazardIntegratorIntegration(TestCase):
         call_args = mock_xgb_class.call_args
         self.assertEqual(call_args[1]["params"], {"max_depth": 3})
         self.assertEqual(call_args[1]["min_hess"], 0.0)
+        self.assertIsNone(call_args[1]["fixed_hess"])
 
     @patch("gbnet.models.survival.hazard_integrator.loadModule")
     def test_integration_lgb_module(self, mock_load_module):
@@ -542,6 +543,7 @@ class TestHazardIntegratorIntegration(TestCase):
             module_type="LGBModule",
             params={"num_leaves": 10},
             min_hess=0.1,
+            fixed_hess=0.25,
         )
 
         # Set to training mode
@@ -558,6 +560,7 @@ class TestHazardIntegratorIntegration(TestCase):
         call_args = mock_lgb_class.call_args
         self.assertEqual(call_args[1]["params"], {"num_leaves": 10})
         self.assertEqual(call_args[1]["min_hess"], 0.1)
+        self.assertEqual(call_args[1]["fixed_hess"], 0.25)
 
     def test_gb_step(self):
         """Test gb_step method."""

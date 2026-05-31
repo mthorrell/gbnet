@@ -105,6 +105,9 @@ class BetaSurvivalModel(BaseEstimator, RegressorMixin):
         Defaults to "XGBModule".
     min_hess : float, optional
         Minimum hessian value for numerical stability. Defaults to 0.0.
+    fixed_hess : float, optional
+        Fixed positive hessian value for the gradient boosting model.
+        Defaults to None.
 
     Attributes
     ----------
@@ -143,6 +146,7 @@ class BetaSurvivalModel(BaseEstimator, RegressorMixin):
         params=None,
         module_type="XGBModule",
         min_hess=0.0,
+        fixed_hess=None,
     ):
         if params is None:
             params = {"max_delta_step": 1 if module_type == "XGBModule" else 5}
@@ -153,6 +157,7 @@ class BetaSurvivalModel(BaseEstimator, RegressorMixin):
         self.params = params
         self.module_type = module_type
         self.min_hess = min_hess
+        self.fixed_hess = fixed_hess
         self.model_ = None
         self.losses_ = []
         self.Module = loadModule(module_type)
@@ -196,6 +201,7 @@ class BetaSurvivalModel(BaseEstimator, RegressorMixin):
             output_dim=2,  # alpha and beta parameters
             params=self.params,
             min_hess=self.min_hess,
+            fixed_hess=self.fixed_hess,
         )
         self.model_.train()
 
@@ -374,6 +380,9 @@ class ThetaSurvivalModel(BaseEstimator, RegressorMixin):
         Defaults to "XGBModule".
     min_hess : float, optional
         Minimum hessian value for numerical stability. Defaults to 0.0.
+    fixed_hess : float, optional
+        Fixed positive hessian value for the gradient boosting model.
+        Defaults to None.
 
     Attributes
     ----------
@@ -416,6 +425,7 @@ class ThetaSurvivalModel(BaseEstimator, RegressorMixin):
         params=None,
         module_type="XGBModule",
         min_hess=0.0,
+        fixed_hess=None,
     ):
         if params is None:
             params = {"max_delta_step": 1 if module_type == "XGBModule" else 5}
@@ -426,6 +436,7 @@ class ThetaSurvivalModel(BaseEstimator, RegressorMixin):
         self.params = params
         self.module_type = module_type
         self.min_hess = min_hess
+        self.fixed_hess = fixed_hess
         self.model_ = None
         self.losses_ = []
         self.Module = loadModule(module_type)
@@ -469,6 +480,7 @@ class ThetaSurvivalModel(BaseEstimator, RegressorMixin):
             output_dim=1,
             params=self.params,
             min_hess=self.min_hess,
+            fixed_hess=self.fixed_hess,
         )
         self.model_.train()
 

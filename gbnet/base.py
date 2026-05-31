@@ -1,4 +1,5 @@
 import abc
+import warnings
 import torch
 from torch import nn
 
@@ -11,11 +12,21 @@ class BaseGBModule(nn.Module, abc.ABC):
 
     Attributes:
         min_hess (float) : minimum hessian value
+        fixed_hess (float, optional) : fixed hessian value
     """
 
-    def __init__(self, min_hess=0.0):
+    def __init__(self, min_hess=0.0, fixed_hess=None):
         super(BaseGBModule, self).__init__()
-        self.min_hess = 0.0
+        if fixed_hess is not None and fixed_hess <= 0:
+            raise ValueError("fixed_hess must be positive when provided.")
+        if fixed_hess is not None and min_hess > 0:
+            warnings.warn(
+                "fixed_hess is set and will override min_hess.",
+                UserWarning,
+                stacklevel=2,
+            )
+        self.min_hess = min_hess
+        self.fixed_hess = fixed_hess
         self.grad = None
         self.hess = None
 
@@ -47,6 +58,9 @@ class BaseGBModule(nn.Module, abc.ABC):
     def _get_grad_hess_FX(self):
         grad = self.FX.grad * self.FX.shape[0]
 
+        if self.fixed_hess is not None:
+            return grad, torch.full_like(grad, self.fixed_hess)
+
         # parameters are independent row by row, so we can
         # at least calculate hessians column by column by
         # considering the sum of the gradient columns
@@ -57,7 +71,7 @@ class BaseGBModule(nn.Module, abc.ABC):
                     :, i : (i + 1)
                 ]
             )
-        hess = torch.maximum(torch.cat(hesses, axis=1), torch.Tensor([self.min_hess]))
+        hess = torch.clamp(torch.cat(hesses, axis=1), min=self.min_hess)
         return grad, hess
 
     @abc.abstractmethod
