@@ -24,6 +24,7 @@ class HazardIntegrator(torch.nn.Module):
         params: Dict = {},
         min_hess: float = 0.0,
         module_type: str = "XGBModule",
+        integration_method: str = "trapezoid",
     ):
         """
         Parameters
@@ -37,17 +38,34 @@ class HazardIntegrator(torch.nn.Module):
         module_type
             Type of gradient boosting module to use, either "XGBModule" or "LGBModule".
             Defaults to "XGBModule".
+        integration_method
+            Method for integrating hazards and survival estimates. One of
+            "trapezoid", "stepwise_left", or "stepwise_right".
         """
         super().__init__()
+        assert integration_method in {"trapezoid", "stepwise_left", "stepwise_right"}
         self.params = params.copy()
         self.min_hess = min_hess
         self.module_type = module_type
+        self.integration_method = integration_method
         self.covariate_cols = ["time"] + covariate_cols
         self.gb_module: Optional[object] = None
         self.Module = loadModule(module_type)
 
         # Buffer to store pre-processed static data during training
         self.static_data: Dict[str, torch.Tensor] = {}
+
+    def _integrate_slice(self, values, dt, same_unit):
+        slice_values = torch.zeros_like(values)
+        if self.integration_method == "trapezoid":
+            slice_values[same_unit] = (
+                0.5 * (values[same_unit] + values.roll(1, 0)[same_unit]) * dt[same_unit]
+            )
+        elif self.integration_method == "stepwise_left":
+            slice_values[same_unit] = values.roll(1, 0)[same_unit] * dt[same_unit]
+        elif self.integration_method == "stepwise_right":
+            slice_values[same_unit] = values[same_unit] * dt[same_unit]
+        return slice_values
 
     def _prepare_data(self, df: pd.DataFrame):
         """
@@ -132,20 +150,15 @@ class HazardIntegrator(torch.nn.Module):
         log_hazard = self.gb_module(dmatrix).flatten()  # [N]
         hazard = torch.exp(log_hazard)  # λ(t)
 
-        # 2. Per-row trapezoidal slice for hazard integration: λ(t) * Δt
-        # This is more efficient than the original `roll` and masking
-        trapz_slice = torch.zeros_like(hazard)
-        # We only compute slices where it's the same unit
-        trapz_slice[same_unit] = (
-            0.5 * (hazard[same_unit] + hazard.roll(1, 0)[same_unit]) * dt[same_unit]
-        )
+        # 2. Per-row slice for hazard integration: λ(t) * Δt
+        hazard_slice = self._integrate_slice(hazard, dt, same_unit)
 
         # 3. Cumulative hazard per unit: Λ(T) = Σ λ(t)Δt
         # `scatter_reduce` is highly efficient for grouped sums.
         # We get both the total integrated hazard per unit...
         unit_Lambda = torch.zeros(
             interleave_amts.size(0), device=hazard.device
-        ).scatter_reduce_(0, unit_ids, trapz_slice, reduce="sum", include_self=False)
+        ).scatter_reduce_(0, unit_ids, hazard_slice, reduce="sum", include_self=False)
 
         is_last_in_group = torch.cat(
             (
@@ -158,7 +171,7 @@ class HazardIntegrator(torch.nn.Module):
         if return_survival_estimates:
             # ...and the cumulative hazard Λ(t) for each time step.
             # Your original logic is solid; we just use the cached tensors.
-            Lambda_global = torch.cumsum(trapz_slice, dim=0)
+            Lambda_global = torch.cumsum(hazard_slice, dim=0)
             # Create a tensor of cumulative sums at the end of each *previous* group
             cusum_prev_groups = torch.cat(
                 [
@@ -174,13 +187,8 @@ class HazardIntegrator(torch.nn.Module):
             # 4. Survival function S(t) = exp(‑Λ(t))
             survival = torch.exp(-Lambda)
 
-            # 5. Expected value 𝔼[T] ≈ Σ S(t)Δt (trapezoidal integration)
-            surv_slice = torch.zeros_like(survival)
-            surv_slice[same_unit] = (
-                0.5
-                * (survival[same_unit] + survival.roll(1, 0)[same_unit])
-                * dt[same_unit]
-            )
+            # 5. Expected value 𝔼[T] ≈ Σ S(t)Δt
+            surv_slice = self._integrate_slice(survival, dt, same_unit)
 
             unit_E = torch.zeros_like(unit_Lambda).scatter_reduce_(
                 0, unit_ids, surv_slice, reduce="sum", include_self=False

@@ -152,6 +152,15 @@ class TestHazardSurvivalModel(TestCase):
         self.assertEqual(model.module_type, "LGBModule")
         self.assertEqual(model.min_hess, 0.1)
 
+    def test_init_expanded_input_and_integration_options(self):
+        """Test initialization with expanded input and integration options."""
+        model = HazardSurvivalModel(
+            input_is_expanded=True, integration_method="stepwise_left"
+        )
+
+        self.assertTrue(model.input_is_expanded)
+        self.assertEqual(model.integration_method, "stepwise_left")
+
     def test_fit_basic(self):
         """Test basic fitting functionality."""
         # Check that the shared model was initialized correctly
@@ -326,6 +335,87 @@ class TestHazardSurvivalModel(TestCase):
         self.assertEqual(data_format, "time_varying")
         self.assertIsInstance(exp_df, pd.DataFrame)
         self.assertIsInstance(y_out, pd.DataFrame)
+
+    def test_validate_and_convert_input_data_trusts_expanded_input(self):
+        """Test expanded input option preserves rows instead of expanding."""
+        X = pd.DataFrame(
+            {
+                "unit_id": [1, 1, 1, 2, 2],
+                "time": [0.0, 1.0, 2.0, 0.0, 2.0],
+                "feature1": [10, 11, 12, 20, 22],
+            }
+        )
+        y = pd.DataFrame({"unit_id": [1, 2], "time": [2.0, 2.0], "event": [1, 0]})
+
+        expanded_model = HazardSurvivalModel(input_is_expanded=True)
+        with self.assertWarns(UserWarning):
+            data_format, exp_df, y_out = (
+                expanded_model._validate_and_convert_input_data(X, y)
+            )
+
+        self.assertEqual(data_format, "time_varying")
+        pd.testing.assert_frame_equal(exp_df.reset_index(drop=True), X)
+        self.assertIs(y_out, y)
+
+        default_model = HazardSurvivalModel()
+        (
+            data_format,
+            default_exp_df,
+            y_out,
+        ) = default_model._validate_and_convert_input_data(X, y)
+
+        self.assertEqual(data_format, "time_varying")
+        self.assertEqual(len(default_exp_df), 6)
+        self.assertEqual(
+            len(
+                default_exp_df[
+                    (default_exp_df["unit_id"] == 2) & (default_exp_df["time"] == 1.0)
+                ]
+            ),
+            1,
+        )
+        self.assertIs(y_out, y)
+
+    def test_expanded_input_warns_for_missing_requested_time(self):
+        """Test expanded prediction data warns when requested times are missing."""
+        X = pd.DataFrame(
+            {
+                "unit_id": [1, 1, 1, 2, 2],
+                "time": [0.0, 1.0, 2.0, 0.0, 2.0],
+                "feature1": [10, 11, 12, 20, 22],
+            }
+        )
+        model = HazardSurvivalModel(input_is_expanded=True)
+
+        with self.assertWarns(UserWarning):
+            data_format, exp_df, y_out = model._validate_and_convert_input_data(
+                X, np.array([0.0, 1.0, 2.0])
+            )
+
+        self.assertEqual(data_format, "time_varying")
+        pd.testing.assert_frame_equal(exp_df.reset_index(drop=True), X)
+        np.testing.assert_array_equal(y_out, np.array([0.0, 1.0, 2.0]))
+
+    def test_score_with_expanded_input_is_finite_and_preserves_rows(self):
+        """Test scoring with expanded input does not add rows."""
+        X = pd.DataFrame(
+            {
+                "unit_id": [1, 1, 2, 2],
+                "time": [0.0, 1.0, 0.0, 1.0],
+                "feature1": [0.1, 0.2, 0.3, 0.4],
+            }
+        )
+        y = pd.DataFrame({"unit_id": [1, 2], "time": [1.0, 1.0], "event": [1, 0]})
+        model = HazardSurvivalModel(
+            nrounds=2, module_type="XGBModule", input_is_expanded=True
+        )
+        model.fit(X, y)
+
+        score = model.score(X, y)
+
+        self.assertIsInstance(score, float)
+        self.assertTrue(np.isfinite(score))
+        self.assertEqual(len(model.exp_df), len(X))
 
 
 class TestHazardSurvivalModelIntegration(TestCase):
