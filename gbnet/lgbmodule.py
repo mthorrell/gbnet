@@ -117,7 +117,7 @@ class LGBModule(BaseGBModule):
         # TODO figure out how actual batch training works here
         if self.training:
             if self.bst:
-                preds = self.bst._Booster__inner_predict(0).copy()
+                preds = self.bst._Booster__inner_predict(data_idx=0).copy()
             else:
                 preds = np.zeros([self.batch_size, self.output_dim])
         else:

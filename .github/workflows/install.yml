@@ -1,0 +1,106 @@
+name: Installation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  distributions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install build
+      - run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: dist
+
+  pip:
+    name: Pip (${{ matrix.os }}, Python ${{ matrix.python }}, ${{ matrix.distribution }}, ${{ matrix.dependencies }})
+    needs: distributions
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-15-intel]
+        python: ['3.11']
+        distribution: [wheel]
+        dependencies: [latest]
+        include:
+          - os: ubuntu-latest
+            python: '3.9'
+            distribution: wheel
+            dependencies: minimum
+          - os: macos-latest
+            python: '3.14'
+            distribution: sdist
+            dependencies: latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist
+      - name: Install artifact in an empty environment and fit models
+        shell: bash
+        env:
+          DISTRIBUTION: ${{ matrix.distribution }}
+          DEPENDENCIES: ${{ matrix.dependencies }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          import venv
+
+          suffix = '*.whl' if os.environ['DISTRIBUTION'] == 'wheel' else '*.tar.gz'
+          artifact, = Path('dist').glob(suffix)
+          smoke = Path('scripts/smoke_install.py').resolve()
+          constraints = Path('.github/requirements-minimum.txt').resolve()
+          with tempfile.TemporaryDirectory() as temporary:
+              environment = Path(temporary) / 'env'
+              venv.EnvBuilder(with_pip=True).create(environment)
+              executable = environment / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+              install = [str(executable), '-m', 'pip', 'install', '--no-cache-dir']
+              if os.environ['DEPENDENCIES'] == 'minimum':
+                  install.extend(['--constraint', str(constraints)])
+              subprocess.run([*install, str(artifact.resolve())], check=True)
+              subprocess.run([str(executable), '-m', 'pip', 'check'], check=True)
+              subprocess.run([str(executable), '-I', str(smoke)], cwd=temporary, check=True, timeout=600)
+          PY
+
+  conda-build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          python-version: '3.11'
+          channels: conda-forge
+          channel-priority: strict
+      - name: Build and test Conda package
+        shell: bash -el {0}
+        run: |
+          conda install -y --override-channels -c conda-forge conda-build
+          conda build conda/recipe --override-channels -c conda-forge --output-folder conda-dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conda-package-${{ matrix.os }}
+          path: conda-dist

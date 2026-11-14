@@ -1,5 +1,2 @@
-lightgbm>=4.3.0
-numpy>=1.23.5
-pandas>=2.2.2
-torch>=1.13.1
-xgboost>=2.0.3
+# Install the package and the dependencies declared in pyproject.toml.
+.
