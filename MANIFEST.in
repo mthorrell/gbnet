@@ -1,0 +1,2 @@
+include scripts/smoke_install.py
+recursive-include conda/recipe *.yaml

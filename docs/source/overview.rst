@@ -31,7 +31,31 @@ Installation
 Troubleshooting and dependencies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Use of virtual environments/conda is best practice when installing GBNet. GBNet requires XGBoost, LightGBM and PyTorch as key dependencies and may use these packages simultaneously. Each of these packages rely on OpenMP implementations for parallelization. Conflicts in the OpenMP implementations will throw warnings and may produce slow or incorrect outputs. Prior to installing these python dependencies, it is best to ensure each of these dependencies point to a single OpenMP implementation. Apple Silicon users may prefer to install ``libomp`` via ``brew`` prior to the python package dependency installations (see, for example, `build notes <https://xgboost.readthedocs.io/en/stable/build.html#running-cmake-and-build>`_ for XGBoost for additional details).
+Install into a fresh virtual environment or Conda environment. The package declares
+all dependencies for both boosting backends and the built-in models, so separate
+dependency installation steps are unnecessary.
+
+On macOS, GBNet imports PyTorch before loading its boosting backends and pip
+selects PyTorch versions below 2.11. The newer macOS wheels use a different OpenMP
+library identifier and can cause a second runtime to load and crash the process.
+Import GBNet before importing LightGBM or XGBoost directly. Installing Homebrew's
+``libomp`` by itself does not fix conflicting runtimes. Restart notebook kernels
+after changing native dependencies; do not suppress conflicts with
+``KMP_DUPLICATE_LIB_OK``.
+
+On Intel Macs, use Python 3.9 through 3.12. PyTorch no longer publishes newer
+Intel Mac wheels, and GBNet selects NumPy below 2 to match those wheels' ABI.
+
+A native Conda recipe is provided in ``conda/recipe`` and uses dependencies from
+conda-forge. GBNet must be built locally until a public Conda package is published.
+See the repository README for build commands. For a pip installation inside Conda,
+create a fresh environment with Python and pip, then run ``python -m pip install
+gbnet`` without separately installing native dependencies through Conda.
+
+From a source checkout, ``python -m pip check`` and
+``python -I scripts/smoke_install.py`` verify the installed distribution, including
+actual training and prediction with both forecasting backends. The isolated
+Python invocation prevents imports from accidentally using the source checkout.
 
 
 Pytorch Modules

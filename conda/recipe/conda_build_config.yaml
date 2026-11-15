@@ -1,0 +1,4 @@
+# Use a Python with published wheels/builds for every supported platform.
+# Override with `conda build --python ...` when building another Python variant.
+python:
+  - '3.11'

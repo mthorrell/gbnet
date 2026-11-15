@@ -22,8 +22,14 @@ def test_readme_examples():
     t0 = time.time()
 
     # XGBoost training for comparison
+    # Exact splits keep this numerical parity check independent of histogram
+    # quantization and float32 autograd rounding differences across versions.
     xbst = xgb.train(
-        params={"objective": "reg:squarederror", "base_score": 0.0},
+        params={
+            "objective": "reg:squarederror",
+            "base_score": 0.0,
+            "tree_method": "exact",
+        },
         dtrain=xgb.DMatrix(X, label=Y),
         num_boost_round=iters,
     )
@@ -38,7 +44,9 @@ def test_readme_examples():
     t2 = time.time()
 
     # XGBModule training
-    xnet = xgbmodule.XGBModule(n, input_dim, output_dim, params={})
+    xnet = xgbmodule.XGBModule(
+        n, input_dim, output_dim, params={"tree_method": "exact"}
+    )
     xmse = torch.nn.MSELoss()
 
     X_dmatrix = xgb.DMatrix(X)

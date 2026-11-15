@@ -1,0 +1,43 @@
+{% set metadata = load_file_data('../../pyproject.toml', from_recipe_dir=True) %}
+
+package:
+  name: gbnet
+  version: {{ metadata['project']['version'] }}
+
+source:
+  path: ../..
+
+build:
+  number: 0
+  skip: true  # [py<39]
+  script: {{ PYTHON }} -m pip install . --no-deps --no-build-isolation -vv
+
+requirements:
+  host:
+    - python
+    - pip
+    - setuptools >=64
+    - wheel
+  run:
+    - python
+    - numpy >=1.23.5  # [not (osx and x86_64)]
+    - numpy >=1.23.5,<2  # [osx and x86_64]
+    - pandas >=2.2.2
+    - scipy >=1.10
+    - scikit-learn >=1.5
+    - lightgbm >=4.3.0
+    - py-xgboost >=2.0.3
+    - pytorch >=1.13.1  # [not osx]
+    - pytorch >=1.13.1,<2.11  # [osx]
+
+test:
+  source_files:
+    - scripts/smoke_install.py
+  commands:
+    - python -I scripts/smoke_install.py
+
+about:
+  home: https://github.com/mthorrell/gbnet
+  license: MIT
+  license_file: LICENSE
+  summary: Gradient Boosting libraries integrated with PyTorch

@@ -1,0 +1,9 @@
+# Direct runtime dependency floors from pyproject.toml for the Linux Python 3.9 job.
+# Keep these pins in sync when changing the supported minimum versions.
+numpy==1.23.5
+pandas==2.2.2
+scipy==1.10.0
+scikit-learn==1.5.0
+lightgbm==4.3.0
+xgboost==2.0.3
+torch==1.13.1

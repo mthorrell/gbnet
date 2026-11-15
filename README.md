@@ -30,13 +30,76 @@ On top of these, GBNet ships higher-level models in `gbnet.models`, including fo
 
 ## Installation
 
-GBNet is on PyPI:
+Use a fresh Python environment (Python 3.9 or newer):
 
 ```bash
-pip install gbnet
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python -m pip install gbnet
 ```
 
-Using a virtual environment or conda environment is recommended. If you run into build / wheel issues for key dependencies (PyTorch, XGBoost, LightGBM), install them first following their platform-specific instructions, then install `gbnet`.
+The package declares all dependencies needed for both boosting backends and the
+built-in models: PyTorch, XGBoost, LightGBM, NumPy, pandas, SciPy, and scikit-learn.
+You do not need to install these packages separately or in a particular order.
+
+On macOS, GBNet loads PyTorch before its boosting backends so they can use the
+OpenMP runtime bundled with PyTorch. The pip metadata selects PyTorch `<2.11` on
+macOS: newer wheels use a different OpenMP library identifier and can segfault
+when combined with the boosting libraries. This restriction does not apply to
+pip installations on Linux or Windows. Import a GBNet module before importing
+LightGBM or XGBoost directly; installing Homebrew's `libomp` alone does not resolve
+conflicting runtimes already loaded into a Python process.
+
+Intel Macs need Python 3.9–3.12 because PyTorch no longer publishes newer Intel
+Mac wheels. GBNet also selects NumPy `<2` there to match those wheels' binary ABI.
+These Intel-specific limits do not apply to Apple Silicon, Linux, or Windows.
+
+### Conda
+
+You can use pip inside a fresh Conda environment:
+
+```bash
+conda create -n gbnet python=3.11 pip
+conda activate gbnet
+python -m pip install gbnet
+```
+
+A native Conda recipe is included in `conda/recipe`. It uses conda-forge for all
+native dependencies so Conda can select a shared OpenMP runtime. GBNet is not yet
+published on conda-forge; a public `conda install -c conda-forge gbnet` requires
+publishing the recipe. To build and install it locally from a source checkout:
+
+```bash
+conda install -n base --override-channels -c conda-forge conda-build
+conda build conda/recipe --override-channels -c conda-forge
+conda create -n gbnet-native --use-local --override-channels -c conda-forge python=3.11 gbnet
+```
+
+### Check an installation
+
+From a source checkout, run:
+
+```bash
+python -m pip check
+python -I scripts/smoke_install.py
+```
+
+The smoke test uses the installed package, fits both boosting modules and both
+forecasting backends, and checks predictions and decreasing training loss in
+separate processes with timeouts. It needs no downloaded data or test framework.
+The `-I` flag prevents the source checkout from masking a broken installation.
+To test unreleased changes locally, use `python -m pip install .` instead of
+installing from PyPI. Installation CI tests wheels and source distributions in
+fresh environments, and builds and installs the native Conda package.
+The PyPI release workflow waits for these installation tests and publishes the
+same distribution files they tested.
+
+If a notebook kernel has already loaded conflicting OpenMP libraries, restart
+it in a fresh environment and import GBNet first. Avoid mixing pip wheels and
+Conda builds of the native dependencies. The upstream
+[LightGBM FAQ](https://lightgbm.readthedocs.io/en/stable/FAQ.html#lightgbm-crashes-randomly-with-the-error-like-initializing-libiomp5-dylib-but-found-libomp-dylib-already-initialized)
+and [PyTorch issue](https://github.com/pytorch/pytorch/issues/155201) explain these
+runtime conflicts. Do not use `KMP_DUPLICATE_LIB_OK` to hide them.
 
 ---
 

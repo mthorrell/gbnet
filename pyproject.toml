@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gbnet"
+version = "0.8.1"
+description = "Gradient Boosting libraries integrated with PyTorch"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{name = "Michael Horrell", email = "mthorrell@github.com"}]
+dependencies = [
+    "numpy>=1.23.5; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    # The last official Intel Mac torch wheels predate NumPy's 2.x ABI.
+    "numpy>=1.23.5,<2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "pandas>=2.2.2",
+    "scipy>=1.10",
+    "scikit-learn>=1.5",
+    "lightgbm>=4.3.0",
+    "xgboost>=2.0.3",
+    "torch>=1.13.1; sys_platform != 'darwin'",
+    # Newer macOS wheels use a different OpenMP install name, so dyld loads a
+    # second runtime for XGBoost/LightGBM even when torch was imported first.
+    # Reproduced with 2.15.0; the install name changes starting with 2.11.0.
+    "torch>=1.13.1,<2.11; sys_platform == 'darwin'",
+]
+
+[project.urls]
+Homepage = "https://github.com/mthorrell/gbnet"
+
+[tool.setuptools.packages.find]
+include = ["gbnet*"]
+
+[tool.ruff.lint]
+# Preserve the defaults used before Ruff 0.16 and by the pre-commit hook.
+select = ["E4", "E7", "E9", "F"]
