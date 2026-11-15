@@ -30,3 +30,7 @@ Homepage = "https://github.com/mthorrell/gbnet"
 
 [tool.setuptools.packages.find]
 include = ["gbnet*"]
+
+[tool.ruff.lint]
+# Preserve the defaults used before Ruff 0.16 and by the pre-commit hook.
+select = ["E4", "E7", "E9", "F"]
