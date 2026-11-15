@@ -6,11 +6,12 @@ is pure Python, but the recipe builds per platform so it can retain the macOS an
 Intel-specific dependency bounds in the Python metadata. Installation CI tests
 the resulting packages on Linux, Windows, Apple Silicon, and Intel Macs.
 
-Build it in a dedicated packaging environment, from the repository root:
+Install the build tool in Conda's base environment, where the `conda` command
+discovers its subcommands. Builds and tests run in separate environments created
+by conda-build. From the repository root:
 
 ```bash
-conda create -n gbnet-build --override-channels -c conda-forge python=3.11 conda-build
-conda activate gbnet-build
+conda install -n base --override-channels -c conda-forge conda-build
 conda build conda/recipe --override-channels -c conda-forge
 conda create -n gbnet-native --use-local --override-channels --strict-channel-priority -c conda-forge python=3.11 gbnet
 conda run -n gbnet-native python -I scripts/smoke_install.py

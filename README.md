@@ -70,7 +70,7 @@ published on conda-forge; a public `conda install -c conda-forge gbnet` requires
 publishing the recipe. To build and install it locally from a source checkout:
 
 ```bash
-conda install --override-channels -c conda-forge conda-build
+conda install -n base --override-channels -c conda-forge conda-build
 conda build conda/recipe --override-channels -c conda-forge
 conda create -n gbnet-native --use-local --override-channels -c conda-forge python=3.11 gbnet
 ```
