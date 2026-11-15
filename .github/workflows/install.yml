@@ -94,12 +94,13 @@ jobs:
         with:
           miniforge-version: latest
           python-version: '3.11'
+          # conda discovers subcommands in base, not the activated test env.
+          conda-build-version: '*'
           channels: conda-forge
           channel-priority: strict
       - name: Build and test Conda package
         shell: bash -el {0}
         run: |
-          conda install -y --override-channels -c conda-forge conda-build
           conda build conda/recipe --override-channels -c conda-forge --output-folder conda-dist
       - uses: actions/upload-artifact@v4
         with:
